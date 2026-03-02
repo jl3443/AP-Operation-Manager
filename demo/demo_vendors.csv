@@ -1,0 +1,6 @@
+vendor_code,name,tax_id,address,city,state,country,payment_terms_code,status,risk_level
+SUP001,SteelCore Industries Ltd.,91-1234567,100 Steel Way,Pittsburgh,PA,US,Net60,active,medium
+SUP002,TechParts Global Inc.,91-2345678,200 Tech Blvd,San Jose,CA,US,Net45,active,low
+SUP003,LogiTrans Freight Solutions,91-3456789,300 Freight Rd,Memphis,TN,US,Net30,active,low
+SUP004,SafeGuard PPE & Safety,91-4567890,400 Safety Lane,Houston,TX,US,Net30,active,low
+SUP005,MachPrecision Tools Corp.,91-5678901,500 Precision Dr,Detroit,MI,US,Net45,active,high

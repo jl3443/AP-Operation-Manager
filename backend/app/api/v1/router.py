@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     approvals,
     audit,
     auth,
+    compliance,
     config,
     exceptions,
     import_data,
@@ -29,3 +30,4 @@ api_router.include_router(vendors.router)
 api_router.include_router(ai_chat.router)
 api_router.include_router(audit.router)
 api_router.include_router(config.router)
+api_router.include_router(compliance.router)

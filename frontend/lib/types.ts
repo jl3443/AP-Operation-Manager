@@ -411,3 +411,55 @@ export interface AIChatResponse {
   response: string
   conversation_id: string
 }
+
+// ============================================================
+// Compliance & Optimization types
+// ============================================================
+
+export interface TouchlessRate {
+  rate: number
+  total_invoices: number
+  touchless_count: number
+  cycle_time_avg_hours: number
+}
+
+export interface ControlMapping {
+  control_id: string
+  control_name: string
+  policy_section: string
+  description: string
+  implementation_status: "active" | "partial" | "planned"
+  automated: boolean
+  last_tested: string
+  test_result: "pass" | "fail" | "not_tested"
+}
+
+export interface ComplianceGap {
+  gap_id: string
+  control_id: string
+  finding: string
+  severity: "high" | "medium" | "low"
+  status: "open" | "remediation" | "closed"
+  recommendation: string
+  evidence_count: number
+}
+
+export interface RootCauseItem {
+  category: string
+  issue: string
+  occurrence_count: number
+  affected_invoices: number
+  impact_amount: number
+  suggested_fix: string
+}
+
+export interface OptimizationProposal {
+  id: string
+  title: string
+  description: string
+  category: string
+  priority: "high" | "medium" | "low"
+  projected_impact: string
+  effort: "low" | "medium" | "high"
+  status: "proposed" | "approved" | "implemented"
+}

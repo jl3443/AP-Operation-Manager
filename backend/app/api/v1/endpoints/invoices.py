@@ -373,3 +373,91 @@ def get_audit_trail(
         }
         for e in entries
     ]
+
+
+@router.post("/batch-process")
+def batch_process_invoices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Process all draft/extracted invoices through the matching pipeline.
+
+    Returns a summary of results: touchless, exceptions, escalated.
+    """
+    # Find invoices ready for matching (extracted status)
+    invoices = (
+        db.query(Invoice)
+        .filter(Invoice.status.in_([InvoiceStatus.extracted, InvoiceStatus.draft]))
+        .all()
+    )
+
+    results = {
+        "total_processed": 0,
+        "touchless": 0,
+        "exceptions": 0,
+        "pending_approval": 0,
+        "errors": 0,
+        "details": [],
+    }
+
+    for inv in invoices:
+        try:
+            # Determine match type
+            po_line_ids = [li.po_line_id for li in inv.line_items if li.po_line_id]
+            use_three_way = False
+            if po_line_ids:
+                grn_count = (
+                    db.query(func.count(GRNLineItem.id))
+                    .filter(GRNLineItem.po_line_id.in_(po_line_ids))
+                    .scalar()
+                ) or 0
+                use_three_way = grn_count > 0
+
+            if use_three_way:
+                match_result = match_service.run_three_way_match(db, inv.id)
+            else:
+                match_result = match_service.run_two_way_match(db, inv.id)
+
+            results["total_processed"] += 1
+
+            if match_result.match_status.value in ("matched", "tolerance_passed"):
+                results["touchless"] += 1
+                status_label = "touchless"
+            elif inv.status == InvoiceStatus.exception:
+                results["exceptions"] += 1
+                status_label = "exception"
+            else:
+                results["pending_approval"] += 1
+                status_label = "pending_approval"
+
+            results["details"].append({
+                "invoice_id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "status": status_label,
+                "match_score": match_result.overall_score,
+            })
+
+            audit_service.log_action(
+                db,
+                entity_type="invoice",
+                entity_id=inv.id,
+                action="batch_matched",
+                actor_type=ActorType.system,
+                actor_name="Batch Processor",
+                changes={
+                    "match_type": match_result.match_type.value,
+                    "match_status": match_result.match_status.value,
+                },
+            )
+            db.commit()
+        except Exception as e:
+            results["errors"] += 1
+            results["details"].append({
+                "invoice_id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "status": "error",
+                "error": str(e),
+            })
+            db.rollback()
+
+    return results

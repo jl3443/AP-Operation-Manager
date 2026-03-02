@@ -1,0 +1,13 @@
+grn_number,po_number,vendor_code,receipt_date,warehouse,po_line_number,quantity_received,condition_notes
+GRN-2025-001,PO-2025-001,SUP001,2025-01-21,WH-CHI-01,1,200,"Full delivery received in good condition"
+GRN-2025-001,PO-2025-001,SUP001,2025-01-21,WH-CHI-01,2,150,"Full delivery received in good condition"
+GRN-2025-002,PO-2025-002,SUP002,2025-01-24,WH-CHI-01,1,50,"All components tested and accepted by QC"
+GRN-2025-002,PO-2025-002,SUP002,2025-01-24,WH-CHI-01,2,10,"All components tested and accepted by QC"
+GRN-2025-003,PO-2025-003,SUP003,2025-01-31,,1,1,"Service completion confirmed by SCM"
+GRN-2025-004,PO-2025-004,SUP004,2025-01-27,WH-CHI-02,1,60,"All PPE items received"
+GRN-2025-004,PO-2025-004,SUP004,2025-01-27,WH-CHI-02,2,80,"All PPE items received"
+GRN-2025-005,PO-2025-005,SUP005,2025-02-10,WH-CHI-01,1,2,"Turrets received - partial delivery"
+GRN-2025-005,PO-2025-005,SUP005,2025-02-10,WH-CHI-01,2,2,"2 of 3 spindles received"
+GRN-2025-005,PO-2025-005,SUP005,2025-02-10,WH-CHI-01,3,0,"Not yet shipped"
+GRN-2025-006,PO-2025-006,SUP001,2025-02-04,WH-CHI-01,1,500,"Full delivery received"
+GRN-2025-006,PO-2025-006,SUP001,2025-02-04,WH-CHI-01,2,200,"Full delivery received"

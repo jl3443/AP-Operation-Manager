@@ -80,3 +80,30 @@ class ApprovalTurnaround(BaseModel):
     level: int
     avg_hours: float
     total_tasks: int
+
+
+class TouchlessRate(BaseModel):
+    rate: float
+    total_invoices: int
+    touchless_count: int
+    cycle_time_avg_hours: float
+
+
+class RootCauseItem(BaseModel):
+    category: str
+    issue: str
+    occurrence_count: int
+    affected_invoices: int
+    impact_amount: float
+    suggested_fix: str
+
+
+class OptimizationProposal(BaseModel):
+    id: str
+    title: str
+    description: str
+    category: str  # matching_rule | tolerance | supplier_config | policy
+    priority: str  # high | medium | low
+    projected_impact: str
+    effort: str  # low | medium | high
+    status: str  # proposed | approved | implemented
