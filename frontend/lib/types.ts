@@ -314,6 +314,40 @@ export interface VendorSummary {
   avg_processing_days: number
 }
 
+export interface AgingBucket {
+  bucket: string
+  count: number
+  amount: number
+}
+
+export interface AgingData {
+  buckets: AgingBucket[]
+}
+
+export interface ExceptionBreakdown {
+  exception_type: string
+  count: number
+  percentage: number
+}
+
+export interface VendorRiskDistribution {
+  risk_level: string
+  count: number
+  percentage: number
+}
+
+export interface MonthlyComparison {
+  month: string
+  invoice_count: number
+  total_amount: number
+}
+
+export interface ApprovalTurnaround {
+  level: number
+  avg_hours: number
+  total_tasks: number
+}
+
 // ============================================================
 // API Response Wrapper
 // ============================================================

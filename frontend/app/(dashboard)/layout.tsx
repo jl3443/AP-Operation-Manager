@@ -25,6 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
+  "/analytics": "Analytics",
   "/invoices": "Invoices",
   "/exceptions": "Exception Queue",
   "/approvals": "Approval Center",

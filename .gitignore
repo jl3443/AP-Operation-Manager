@@ -70,3 +70,9 @@ next-env.d.ts
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+# Playwright
+/frontend/test-results/
+/frontend/playwright-report/
+/frontend/blob-report/
+/frontend/e2e/.auth/user.json

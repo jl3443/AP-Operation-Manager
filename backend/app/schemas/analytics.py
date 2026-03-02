@@ -46,3 +46,37 @@ class VendorSummary(BaseModel):
     total_amount: float = 0.0
     exception_count: int = 0
     avg_processing_days: float = 0.0
+
+
+class AgingBucket(BaseModel):
+    bucket: str
+    count: int
+    amount: float
+
+
+class AgingData(BaseModel):
+    buckets: List[AgingBucket]
+
+
+class ExceptionBreakdown(BaseModel):
+    exception_type: str
+    count: int
+    percentage: float
+
+
+class VendorRiskDistribution(BaseModel):
+    risk_level: str
+    count: int
+    percentage: float
+
+
+class MonthlyComparison(BaseModel):
+    month: str
+    invoice_count: int
+    total_amount: float
+
+
+class ApprovalTurnaround(BaseModel):
+    level: int
+    avg_hours: float
+    total_tasks: int

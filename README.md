@@ -41,6 +41,8 @@ docker-compose.yml PostgreSQL, Redis, MinIO (S3), Backend, Frontend
 - Real-time KPI dashboard (match rates, processing times, straight-through rates)
 - Invoice processing funnel visualization
 - Trend analysis and top vendor performance
+- Dedicated Analytics page: aging analysis, exception breakdown, vendor risk distribution, monthly comparison, approval turnaround
+- Export PDF analytics report with one click
 
 ### Data Import
 - Bulk import for purchase orders, goods receipts, and vendors via CSV/Excel
@@ -63,7 +65,7 @@ docker-compose.yml PostgreSQL, Redis, MinIO (S3), Backend, Frontend
 
 ## API
 
-33 REST endpoints across 8 modules:
+39 REST endpoints across 8 modules:
 
 | Module | Endpoints | Description |
 |--------|-----------|-------------|
@@ -73,7 +75,7 @@ docker-compose.yml PostgreSQL, Redis, MinIO (S3), Backend, Frontend
 | Approvals | 4 | Pending queue, approve/reject, batch, history |
 | Vendors | 4 | CRUD with risk level management |
 | Import | 4 | PO, GRN, vendor bulk import + job status |
-| Analytics | 4 | Dashboard KPIs, funnel, trends, top vendors |
+| Analytics | 10 | Dashboard KPIs, funnel, trends, top vendors, aging, exception breakdown, vendor risk, monthly comparison, approval turnaround, PDF export |
 | AI Chat | 1 | Conversational assistant |
 
 ## Getting Started
@@ -87,12 +89,13 @@ docker-compose.yml PostgreSQL, Redis, MinIO (S3), Backend, Frontend
 ### Quick Start (Docker)
 
 ```bash
-# Start all services
-docker compose up -d
+# Start all services (auto-runs migrations + seeds demo data)
+docker compose up --build
 
 # Frontend: http://localhost:3000
 # Backend API: http://localhost:8000/docs
 # MinIO Console: http://localhost:9001
+# Login: admin@apops.dev / admin123
 ```
 
 ### Local Development
@@ -144,6 +147,17 @@ Copy `backend/.env.example` to `backend/.env` and configure:
 | `REDIS_URL` | Redis connection | `redis://localhost:6379/0` |
 
 > AI features gracefully degrade when `LLM_API_KEY` is not set — the app works fully with rule-based fallbacks.
+
+### E2E Testing
+
+```bash
+cd frontend
+npx playwright install chromium   # first time only
+npm run test:e2e                   # run all tests
+npm run test:e2e:ui                # interactive UI mode
+```
+
+Covers 8 test suites: authentication, dashboard, invoices, vendors, exceptions, approvals, audit trail, and data import.
 
 ## User Roles
 

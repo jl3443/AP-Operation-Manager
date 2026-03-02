@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   BarChart3,
+  PieChart,
   FileText,
   AlertTriangle,
   CheckCircle,
@@ -23,6 +24,7 @@ import { Separator } from "@/components/ui/separator"
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
+  { href: "/analytics", label: "Analytics", icon: PieChart },
   { href: "/invoices", label: "Invoices", icon: FileText },
   { href: "/exceptions", label: "Exceptions", icon: AlertTriangle },
   { href: "/approvals", label: "Approvals", icon: CheckCircle },

@@ -74,6 +74,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
 
   # Celery Worker (async tasks: OCR, batch matching, email monitoring)
   celery-worker:
@@ -95,6 +97,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   # Next.js Frontend

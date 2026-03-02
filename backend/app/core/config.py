@@ -29,9 +29,9 @@ class Settings(BaseSettings):
 
     # ── S3 / MinIO ──────────────────────────────────────────────────────
     S3_ENDPOINT: str = "http://localhost:9000"
-    S3_BUCKET: str = "ap-documents"
+    S3_BUCKET: str = "ap-invoices"
     S3_ACCESS_KEY: str = "minioadmin"
-    S3_SECRET_KEY: str = "minioadmin"
+    S3_SECRET_KEY: str = "minioadmin123"
 
     # ── LLM / AI ────────────────────────────────────────────────────────
     LLM_API_KEY: str = ""
