@@ -6,6 +6,8 @@ import {
   AlertTriangle,
   TrendingUp,
   ArrowRight,
+  Zap,
+  Timer,
 } from "lucide-react"
 import Link from "next/link"
 import {
@@ -19,6 +21,7 @@ import {
 } from "recharts"
 
 import { useDashboardKPIs, useFunnelData, useTopVendors, useTrends } from "@/hooks/use-dashboard"
+import { useTouchlessRate } from "@/hooks/use-compliance"
 import { useInvoices } from "@/hooks/use-invoices"
 import { KpiCard } from "@/components/kpi-card"
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
@@ -81,6 +84,7 @@ export default function DashboardPage() {
   const { data: funnel, isLoading: funnelLoading } = useFunnelData()
   const { data: topVendors, isLoading: vendorsLoading } = useTopVendors(5)
   const { data: trends, isLoading: trendsLoading } = useTrends(180)
+  const { data: touchless, isLoading: touchlessLoading } = useTouchlessRate()
   const { data: invoiceData, isLoading: invoicesLoading } = useInvoices({
     page: 1,
     page_size: 5,
@@ -118,9 +122,11 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {kpisLoading ? (
           <>
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
             <KpiCardSkeleton />
             <KpiCardSkeleton />
             <KpiCardSkeleton />
@@ -151,6 +157,16 @@ export default function DashboardPage() {
               title="Match Rate"
               value={`${kpis?.match_rate_pct.toFixed(1) ?? "0"}%`}
               icon={TrendingUp}
+            />
+            <KpiCard
+              title="Touchless Rate"
+              value={`${touchless?.rate.toFixed(1) ?? "0"}%`}
+              icon={Zap}
+            />
+            <KpiCard
+              title="Avg Cycle Time"
+              value={`${touchless?.cycle_time_avg_hours.toFixed(1) ?? "0"}h`}
+              icon={Timer}
             />
           </>
         )}

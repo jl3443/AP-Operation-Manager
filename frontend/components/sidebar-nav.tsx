@@ -12,6 +12,7 @@ import {
   Building2,
   Upload,
   History,
+  Shield,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -31,6 +32,7 @@ const navItems = [
   { href: "/vendors", label: "Vendors", icon: Building2 },
   { href: "/import", label: "Import Data", icon: Upload },
   { href: "/audit", label: "Audit Trail", icon: History },
+  { href: "/compliance", label: "Compliance", icon: Shield },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 

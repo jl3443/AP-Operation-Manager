@@ -267,7 +267,7 @@ def _run_ai_classification(
     ocr_confidence: float,
 ) -> dict[str, Any] | None:
     """Call Claude to classify and validate extracted data."""
-    if not ai_service or not ai_service.client:
+    if not ai_service or not ai_service.available:
         logger.info("AI service unavailable, using rule-based classification only")
         return None
 

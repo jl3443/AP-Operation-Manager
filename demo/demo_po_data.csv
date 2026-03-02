@@ -1,0 +1,13 @@
+po_number,vendor_code,order_date,delivery_date,currency,status,line_number,description,quantity_ordered,unit_price,quantity_received,quantity_invoiced
+PO-2025-001,SUP001,2025-01-05,2025-01-20,USD,fully_received,1,"Hot-Rolled Steel Sheet 4x8ft 11 Gauge",200,142.50,200,0
+PO-2025-001,SUP001,2025-01-05,2025-01-20,USD,fully_received,2,"Hot-Rolled Steel Sheet 4x8ft 14 Gauge",150,110.00,150,0
+PO-2025-002,SUP002,2025-01-08,2025-01-25,USD,fully_received,1,"PT100 Temperature Sensor Type A",50,145.00,50,0
+PO-2025-002,SUP002,2025-01-08,2025-01-25,USD,fully_received,2,"PLC Micro Controller Module M3",10,525.00,10,0
+PO-2025-003,SUP003,2025-01-10,2025-01-31,USD,closed,1,"Inbound Freight Services - January 2025",1,8200.00,1,0
+PO-2025-004,SUP004,2025-01-12,2025-01-28,USD,fully_received,1,"ANSI Z89.1 Hard Hat Blue",60,28.00,60,0
+PO-2025-004,SUP004,2025-01-12,2025-01-28,USD,fully_received,2,"Hi-Vis Safety Vest Size Large",80,24.00,80,0
+PO-2025-005,SUP005,2025-01-15,2025-02-15,USD,partially_received,1,"CNC Turret Assembly T8 Series",2,18500.00,2,0
+PO-2025-005,SUP005,2025-01-15,2025-02-15,USD,partially_received,2,"CNC High-Speed Spindle Unit",3,9000.00,2,0
+PO-2025-005,SUP005,2025-01-15,2025-02-15,USD,partially_received,3,"CNC Control Panel V4",2,7000.00,0,0
+PO-2025-006,SUP001,2025-01-18,2025-02-05,USD,fully_received,1,"Steel Round Rod 12mm Standard Grade",500,28.00,500,0
+PO-2025-006,SUP001,2025-01-18,2025-02-05,USD,fully_received,2,"Steel Round Rod 20mm Standard Grade",200,40.00,200,0

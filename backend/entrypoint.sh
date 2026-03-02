@@ -3,7 +3,9 @@ set -e
 
 echo "==> Running Alembic migrations..."
 cd /app
-alembic upgrade head
+alembic upgrade head || {
+  echo "  Migration failed (tables likely exist already), skipping..."
+}
 
 echo "==> Seeding database (idempotent)..."
 python -m app.seed

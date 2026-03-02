@@ -32,6 +32,7 @@ const pageTitles: Record<string, string> = {
   "/vendors": "Vendor Management",
   "/import": "Data Import",
   "/audit": "Audit Trail",
+  "/compliance": "Compliance & Insights",
   "/settings": "Settings",
 }
 

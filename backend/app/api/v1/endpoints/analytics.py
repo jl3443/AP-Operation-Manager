@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.approval import ApprovalStatus, ApprovalTask
-from app.models.exception import Exception_, ExceptionStatus
+from app.models.exception import Exception_, ExceptionStatus, ExceptionType
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.matching import MatchResult, MatchStatus
 from app.models.user import User
@@ -28,6 +28,9 @@ from app.schemas.analytics import (
     FunnelData,
     FunnelStage,
     MonthlyComparison,
+    OptimizationProposal,
+    RootCauseItem,
+    TouchlessRate,
     TrendData,
     TrendPoint,
     VendorRiskDistribution,
@@ -376,3 +379,203 @@ def analytics_report_pdf(
             "Content-Disposition": f"attachment; filename=ap_analytics_{date_from}_{date_to}.pdf"
         },
     )
+
+
+@router.get("/touchless-rate", response_model=TouchlessRate)
+def touchless_rate(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Calculate touchless processing rate and avg cycle time."""
+    total = db.query(func.count(Invoice.id)).scalar() or 0
+
+    # Touchless = invoices that reached approved/posted WITHOUT any exception
+    from sqlalchemy import exists, and_
+    exception_subq = db.query(Exception_.id).filter(
+        Exception_.invoice_id == Invoice.id
+    ).exists()
+
+    touchless = (
+        db.query(func.count(Invoice.id))
+        .filter(
+            Invoice.status.in_([InvoiceStatus.approved, InvoiceStatus.posted]),
+            ~exception_subq,
+        )
+        .scalar()
+        or 0
+    )
+
+    rate = (touchless / total * 100) if total else 0.0
+
+    # Avg cycle time: hours from created_at to updated_at for approved/posted
+    from sqlalchemy import extract as sql_extract
+    avg_hours_row = (
+        db.query(
+            func.avg(
+                func.extract("epoch", Invoice.updated_at)
+                - func.extract("epoch", Invoice.created_at)
+            )
+        )
+        .filter(Invoice.status.in_([InvoiceStatus.approved, InvoiceStatus.posted]))
+        .scalar()
+    )
+    avg_hours = round(float(avg_hours_row or 0) / 3600, 2)
+
+    return TouchlessRate(
+        rate=round(rate, 1),
+        total_invoices=total,
+        touchless_count=touchless,
+        cycle_time_avg_hours=avg_hours,
+    )
+
+
+@router.get("/root-causes", response_model=List[RootCauseItem])
+def root_causes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Analyze exception patterns to identify root causes."""
+    results = []
+
+    # Group exceptions by type and vendor
+    rows = (
+        db.query(
+            Exception_.exception_type,
+            Vendor.name.label("vendor_name"),
+            func.count(Exception_.id).label("cnt"),
+            func.sum(Invoice.total_amount).label("total_amount"),
+        )
+        .join(Invoice, Invoice.id == Exception_.invoice_id)
+        .join(Vendor, Vendor.id == Invoice.vendor_id)
+        .group_by(Exception_.exception_type, Vendor.name)
+        .order_by(func.count(Exception_.id).desc())
+        .limit(15)
+        .all()
+    )
+
+    fix_map = {
+        "amount_variance": "Review tolerance thresholds or negotiate fixed pricing with vendor",
+        "quantity_variance": "Align PO quantities with actual delivery schedules",
+        "missing_po": "Enforce PO-required policy; train suppliers on PO reference requirements",
+        "duplicate_invoice": "Enable real-time duplicate detection at email ingestion",
+        "vendor_mismatch": "Cleanse vendor master data; standardize naming conventions",
+        "tax_variance": "Update tax configuration for vendor jurisdiction",
+        "expired_po": "Automate PO renewal reminders 30 days before expiry",
+        "partial_delivery_overrun": "Require GRN confirmation before invoice acceptance",
+        "contract_price_variance": "Auto-sync contract prices to PO catalog",
+        "vendor_on_hold": "Block invoice submission for on-hold vendors at portal level",
+    }
+
+    for r in rows:
+        exc_type = r.exception_type.value if hasattr(r.exception_type, "value") else str(r.exception_type)
+        results.append(RootCauseItem(
+            category=exc_type,
+            issue=f"{exc_type.replace('_', ' ').title()} — {r.vendor_name}",
+            occurrence_count=r.cnt,
+            affected_invoices=r.cnt,
+            impact_amount=round(float(r.total_amount or 0), 2),
+            suggested_fix=fix_map.get(exc_type, "Investigate and update matching rules"),
+        ))
+
+    return results
+
+
+@router.get("/optimization-proposals", response_model=List[OptimizationProposal])
+def optimization_proposals(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate optimization proposals based on system performance data."""
+    proposals = []
+
+    # Analyze exception patterns to generate proposals
+    total_invoices = db.query(func.count(Invoice.id)).scalar() or 1
+    total_exceptions = db.query(func.count(Exception_.id)).scalar() or 0
+    exception_rate = total_exceptions / total_invoices * 100
+
+    # Check amount variance frequency
+    amt_var_count = (
+        db.query(func.count(Exception_.id))
+        .filter(Exception_.exception_type == ExceptionType.amount_variance)
+        .scalar() or 0
+    )
+    if amt_var_count > 0:
+        proposals.append(OptimizationProposal(
+            id="opt-1",
+            title="Increase Amount Tolerance Threshold",
+            description=f"{amt_var_count} amount variance exceptions detected. Increasing tolerance from 2% to 5% could auto-resolve ~{min(amt_var_count, int(amt_var_count*0.6))} of these.",
+            category="tolerance",
+            priority="high",
+            projected_impact=f"+{round(amt_var_count*0.6/total_invoices*100, 1)}% touchless rate",
+            effort="low",
+            status="proposed",
+        ))
+
+    # Check missing PO frequency
+    missing_po_count = (
+        db.query(func.count(Exception_.id))
+        .filter(Exception_.exception_type == ExceptionType.missing_po)
+        .scalar() or 0
+    )
+    if missing_po_count > 0:
+        proposals.append(OptimizationProposal(
+            id="opt-2",
+            title="Enable Fuzzy PO Matching",
+            description=f"{missing_po_count} missing PO exceptions. Fuzzy matching on vendor + amount + date could resolve ~{min(missing_po_count, int(missing_po_count*0.7))} automatically.",
+            category="matching_rule",
+            priority="high",
+            projected_impact=f"+{round(missing_po_count*0.7/total_invoices*100, 1)}% touchless rate",
+            effort="medium",
+            status="proposed",
+        ))
+
+    # Check quantity variance
+    qty_var_count = (
+        db.query(func.count(Exception_.id))
+        .filter(Exception_.exception_type == ExceptionType.quantity_variance)
+        .scalar() or 0
+    )
+    if qty_var_count > 0:
+        proposals.append(OptimizationProposal(
+            id="opt-3",
+            title="Add Partial Delivery Tolerance",
+            description=f"{qty_var_count} quantity variance exceptions. Allowing 10% partial delivery tolerance would reduce these by ~{min(qty_var_count, int(qty_var_count*0.5))}.",
+            category="tolerance",
+            priority="medium",
+            projected_impact=f"-{qty_var_count} exceptions/month",
+            effort="low",
+            status="proposed",
+        ))
+
+    # Check vendor on-hold
+    vendor_hold_count = (
+        db.query(func.count(Exception_.id))
+        .filter(Exception_.exception_type == ExceptionType.vendor_on_hold)
+        .scalar() or 0
+    )
+    if vendor_hold_count > 0:
+        proposals.append(OptimizationProposal(
+            id="opt-4",
+            title="Block Invoices from On-Hold Vendors at Ingestion",
+            description=f"{vendor_hold_count} invoices from on-hold vendors reached processing. Pre-screening at email/portal would prevent wasted processing.",
+            category="policy",
+            priority="medium",
+            projected_impact=f"-{vendor_hold_count} wasted processing cycles",
+            effort="medium",
+            status="proposed",
+        ))
+
+    # General: If exception rate is high, suggest supplier training
+    if exception_rate > 20:
+        proposals.append(OptimizationProposal(
+            id="opt-5",
+            title="Supplier Invoice Quality Training Program",
+            description=f"Exception rate is {exception_rate:.0f}%. A supplier training program on proper PO referencing and invoice format could reduce exceptions by 30-40%.",
+            category="supplier_config",
+            priority="high",
+            projected_impact="-30% exception rate",
+            effort="high",
+            status="proposed",
+        ))
+
+    return proposals
