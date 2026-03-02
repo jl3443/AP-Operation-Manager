@@ -141,7 +141,7 @@ export default function LoginPage() {
           </CardContent>
           <CardFooter className="justify-center">
             <p className="text-xs text-muted-foreground">
-              Demo credentials: admin@company.com / password123
+              Demo credentials: admin@apops.dev / admin123
             </p>
           </CardFooter>
         </Card>

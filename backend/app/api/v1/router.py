@@ -8,7 +8,9 @@ from app.api.v1.endpoints import (
     ai_chat,
     analytics,
     approvals,
+    audit,
     auth,
+    config,
     exceptions,
     import_data,
     invoices,
@@ -25,3 +27,5 @@ api_router.include_router(import_data.router)
 api_router.include_router(analytics.router)
 api_router.include_router(vendors.router)
 api_router.include_router(ai_chat.router)
+api_router.include_router(audit.router)
+api_router.include_router(config.router)

@@ -25,6 +25,7 @@ def list_vendors(
     page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
+    risk_level: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -36,6 +37,8 @@ def list_vendors(
         )
     if status_filter:
         query = query.filter(Vendor.status == status_filter)
+    if risk_level:
+        query = query.filter(Vendor.risk_level == risk_level)
 
     total = query.count()
     items = (
@@ -104,3 +107,38 @@ def update_vendor(
     db.commit()
     db.refresh(vendor)
     return vendor
+
+
+@router.delete("/{vendor_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_vendor(
+    vendor_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft-delete a vendor by setting status to blocked.
+
+    Rejects deletion if the vendor has active (non-posted/rejected) invoices.
+    """
+    from app.models.invoice import Invoice
+    from app.models.vendor import VendorStatus
+
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    active_invoices = (
+        db.query(Invoice)
+        .filter(
+            Invoice.vendor_id == vendor_id,
+            Invoice.status.notin_(["posted", "rejected"]),
+        )
+        .count()
+    )
+    if active_invoices > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete vendor with {active_invoices} active invoice(s)",
+        )
+
+    vendor.status = VendorStatus.blocked
+    db.commit()

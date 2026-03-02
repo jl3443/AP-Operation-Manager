@@ -18,7 +18,7 @@ import {
   CartesianGrid,
 } from "recharts"
 
-import { useDashboardKPIs, useFunnelData, useTopVendors } from "@/hooks/use-dashboard"
+import { useDashboardKPIs, useFunnelData, useTopVendors, useTrends } from "@/hooks/use-dashboard"
 import { useInvoices } from "@/hooks/use-invoices"
 import { KpiCard } from "@/components/kpi-card"
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
@@ -64,20 +64,8 @@ const funnelConfig = {
   posted: { label: "Posted", color: funnelColors.posted },
 } satisfies ChartConfig
 
-// TODO: Wire to real analytics when backend endpoint available
-const automationData = [
-  { month: "Jul", rate: 62 },
-  { month: "Aug", rate: 65 },
-  { month: "Sep", rate: 68 },
-  { month: "Oct", rate: 71 },
-  { month: "Nov", rate: 75 },
-  { month: "Dec", rate: 78 },
-  { month: "Jan", rate: 80 },
-  { month: "Feb", rate: 83 },
-]
-
-const automationConfig = {
-  rate: { label: "Automation Rate %", color: "oklch(0.55 0.15 160)" },
+const trendConfig = {
+  value: { label: "Invoice Count", color: "oklch(0.55 0.15 160)" },
 } satisfies ChartConfig
 
 const vendorColors = [
@@ -92,6 +80,7 @@ export default function DashboardPage() {
   const { data: kpis, isLoading: kpisLoading, error: kpisError, refetch: refetchKpis } = useDashboardKPIs()
   const { data: funnel, isLoading: funnelLoading } = useFunnelData()
   const { data: topVendors, isLoading: vendorsLoading } = useTopVendors(5)
+  const { data: trends, isLoading: trendsLoading } = useTrends(180)
   const { data: invoiceData, isLoading: invoicesLoading } = useInvoices({
     page: 1,
     page_size: 5,
@@ -120,6 +109,11 @@ export default function DashboardPage() {
       ])
     ),
   }
+
+  const trendChartData = (trends?.[0]?.data_points ?? []).map((p) => ({
+    date: new Date(p.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    value: p.value,
+  }))
 
   return (
     <div className="space-y-6">
@@ -197,41 +191,49 @@ export default function DashboardPage() {
           </Card>
         )}
 
-        {/* Automation Rate Trend */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Automation Rate Trend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={automationConfig} className="h-[250px] w-full">
-              <LineChart data={automationData} margin={{ left: 10, right: 20, top: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="month"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={12}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={12}
-                  domain={[50, 100]}
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line
-                  dataKey="rate"
-                  type="monotone"
-                  stroke="var(--color-rate)"
-                  strokeWidth={2}
-                  dot={{ fill: "var(--color-rate)", r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+        {/* Invoice Volume Trend */}
+        {trendsLoading ? (
+          <ChartSkeleton />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Invoice Volume Trend</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {trendChartData.length === 0 ? (
+                <div className="flex items-center justify-center h-[250px] text-sm text-muted-foreground">
+                  No trend data available
+                </div>
+              ) : (
+                <ChartContainer config={trendConfig} className="h-[250px] w-full">
+                  <LineChart data={trendChartData} margin={{ left: 10, right: 20, top: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={12}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={12}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Line
+                      dataKey="value"
+                      type="monotone"
+                      stroke="var(--color-value)"
+                      strokeWidth={2}
+                      dot={{ fill: "var(--color-value)", r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Bottom Row */}

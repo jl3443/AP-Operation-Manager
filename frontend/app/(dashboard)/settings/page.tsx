@@ -9,7 +9,9 @@ import {
   Sliders,
   Building,
   Brain,
+  Loader2,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -32,8 +34,43 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTolerances, useUpdateTolerance } from "@/hooks/use-settings"
 
 export default function SettingsPage() {
+  const { data: tolerances, isLoading: tolLoading } = useTolerances()
+  const updateTolerance = useUpdateTolerance()
+
+  // Find global tolerance config (fallback to first)
+  const globalTol = tolerances?.find((t) => t.scope === "global") ?? tolerances?.[0]
+
+  const [amtPct, setAmtPct] = React.useState("")
+  const [amtAbs, setAmtAbs] = React.useState("")
+  const [qtyPct, setQtyPct] = React.useState("")
+
+  // Sync form state when data loads
+  React.useEffect(() => {
+    if (globalTol) {
+      setAmtPct(String(globalTol.amount_tolerance_pct))
+      setAmtAbs(String(globalTol.amount_tolerance_abs))
+      setQtyPct(String(globalTol.quantity_tolerance_pct))
+    }
+  }, [globalTol])
+
+  function handleSaveTolerances() {
+    if (!globalTol) return
+    updateTolerance.mutate(
+      {
+        id: globalTol.id,
+        amount_tolerance_pct: parseFloat(amtPct) || 0,
+        amount_tolerance_abs: parseFloat(amtAbs) || 0,
+        quantity_tolerance_pct: parseFloat(qtyPct) || 0,
+      },
+      {
+        onSuccess: () => toast.success("Tolerance settings saved"),
+        onError: () => toast.error("Failed to save tolerance settings"),
+      },
+    )
+  }
   return (
     <div className="space-y-6">
       <PageHeader
@@ -128,57 +165,86 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Price Variance Tolerance (%)</Label>
-                  <Input type="number" defaultValue="5" />
+              {tolLoading ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin mr-2" />
+                  Loading tolerances...
                 </div>
-                <div className="space-y-2">
-                  <Label>Quantity Variance Tolerance (%)</Label>
-                  <Input type="number" defaultValue="2" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Amount Variance Tolerance ($)</Label>
-                  <Input type="number" defaultValue="100" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tax Variance Tolerance (%)</Label>
-                  <Input type="number" defaultValue="1" />
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Auto-approve within tolerance</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Automatically approve invoices that match within tolerance thresholds
-                    </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Price Variance Tolerance (%)</Label>
+                      <Input
+                        type="number"
+                        value={amtPct}
+                        onChange={(e) => setAmtPct(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Quantity Variance Tolerance (%)</Label>
+                      <Input
+                        type="number"
+                        value={qtyPct}
+                        onChange={(e) => setQtyPct(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Amount Variance Tolerance ($)</Label>
+                      <Input
+                        type="number"
+                        value={amtAbs}
+                        onChange={(e) => setAmtAbs(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tax Variance Tolerance (%)</Label>
+                      <Input type="number" defaultValue="1" />
+                    </div>
                   </div>
-                  <Switch defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Auto-resolve minor exceptions</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Automatically resolve exceptions below the tolerance threshold
-                    </p>
+                  <Separator />
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Auto-approve within tolerance</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Automatically approve invoices that match within tolerance thresholds
+                        </p>
+                      </div>
+                      <Switch defaultChecked />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Auto-resolve minor exceptions</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Automatically resolve exceptions below the tolerance threshold
+                        </p>
+                      </div>
+                      <Switch defaultChecked />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Duplicate detection</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Flag potential duplicate invoices based on vendor, amount, and date
+                        </p>
+                      </div>
+                      <Switch defaultChecked />
+                    </div>
                   </div>
-                  <Switch defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Duplicate detection</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Flag potential duplicate invoices based on vendor, amount, and date
-                    </p>
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={handleSaveTolerances}
+                      disabled={updateTolerance.isPending}
+                    >
+                      {updateTolerance.isPending && (
+                        <Loader2 className="size-4 animate-spin" />
+                      )}
+                      Save Changes
+                    </Button>
                   </div>
-                  <Switch defaultChecked />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button>Save Changes</Button>
-              </div>
+                </>
+              )}
             </CardContent>
           </Card>
 

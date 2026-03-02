@@ -132,7 +132,7 @@ export interface Vendor {
   city?: string
   state?: string
   country?: string
-  payment_terms_id?: string
+  payment_terms_code?: string
   bank_account_info?: Record<string, unknown>
   status: VendorStatus
   risk_level: RiskLevel
@@ -255,7 +255,6 @@ export interface AuditLog {
   actor_name?: string
   changes?: Record<string, unknown>
   evidence?: Record<string, unknown>
-  created_at: string
 }
 
 export interface User {

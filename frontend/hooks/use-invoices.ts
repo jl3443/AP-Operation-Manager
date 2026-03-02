@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { apiGet, apiPost, apiPatch } from "@/lib/api"
+import { apiGet, apiPost, apiPatch, apiUpload } from "@/lib/api"
 import type { Invoice, PaginatedResponse, AuditLog } from "@/lib/types"
 
 interface InvoiceListParams {
@@ -63,6 +63,21 @@ interface InvoiceCreatePayload {
     unit_price: number
     line_total: number
   }>
+}
+
+export function useUploadInvoiceFile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ file, vendorId }: { file: File; vendorId: string }) => {
+      const formData = new FormData()
+      formData.append("file", file)
+      return apiUpload<Invoice>(`/invoices/upload-file?vendor_id=${vendorId}`, formData)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
 }
 
 export function useUploadInvoice() {

@@ -43,7 +43,23 @@ export default function DashboardLayout({
   const router = useRouter()
   const queryClient = useQueryClient()
   const { theme, setTheme } = useTheme()
-  const { data: user } = useCurrentUser()
+  const { data: user, isError: userError } = useCurrentUser()
+
+  // Redirect to login if no token
+  React.useEffect(() => {
+    const token = localStorage.getItem("access_token")
+    if (!token) {
+      router.push("/login")
+    }
+  }, [router])
+
+  // Redirect on auth error (expired/invalid token)
+  React.useEffect(() => {
+    if (userError) {
+      localStorage.removeItem("access_token")
+      router.push("/login")
+    }
+  }, [userError, router])
 
   const userInitials = user?.name
     ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()

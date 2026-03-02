@@ -2,69 +2,132 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Upload, FileText, X, CheckCircle, Loader2, ArrowLeft } from "lucide-react"
+import { useRouter } from "next/navigation"
+import {
+  Upload,
+  FileText,
+  X,
+  CheckCircle,
+  Loader2,
+  ArrowLeft,
+  AlertCircle,
+  Sparkles,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useUploadInvoiceFile, useExtractInvoice } from "@/hooks/use-invoices"
+import { useVendors } from "@/hooks/use-vendors"
+
+type FileStatus = "pending" | "uploading" | "uploaded" | "extracting" | "complete" | "error"
 
 interface UploadFile {
   id: string
+  file: File
   name: string
   size: number
-  progress: number
-  status: "uploading" | "processing" | "complete" | "error"
+  status: FileStatus
+  invoiceId?: string
+  errorMessage?: string
 }
 
-// TODO: Wire upload to useUploadInvoice (JSON InvoiceCreate body) + useExtractInvoice for OCR.
-// File storage not yet implemented on backend — currently uses simulated progress UI.
 export default function InvoiceUploadPage() {
+  const router = useRouter()
   const [files, setFiles] = React.useState<UploadFile[]>([])
   const [isDragging, setIsDragging] = React.useState(false)
+  const [selectedVendorId, setSelectedVendorId] = React.useState<string>("")
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  function handleFiles(fileList: FileList) {
+  const { data: vendorsData, isLoading: vendorsLoading } = useVendors({ page_size: 100 })
+  const uploadMutation = useUploadInvoiceFile()
+  const extractMutation = useExtractInvoice()
+
+  const vendors = vendorsData?.items ?? []
+
+  function updateFile(id: string, updates: Partial<UploadFile>) {
+    setFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, ...updates } : f)),
+    )
+  }
+
+  async function uploadSingleFile(uploadFile: UploadFile) {
+    updateFile(uploadFile.id, { status: "uploading" })
+
+    try {
+      const invoice = await uploadMutation.mutateAsync({
+        file: uploadFile.file,
+        vendorId: selectedVendorId,
+      })
+      updateFile(uploadFile.id, {
+        status: "uploaded",
+        invoiceId: invoice.id,
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Upload failed"
+      updateFile(uploadFile.id, {
+        status: "error",
+        errorMessage: message,
+      })
+    }
+  }
+
+  async function handleFiles(fileList: FileList) {
+    if (!selectedVendorId) {
+      toast.error("Please select a vendor before uploading files.")
+      return
+    }
+
     const newFiles: UploadFile[] = Array.from(fileList).map((file, i) => ({
       id: `${Date.now()}-${i}`,
+      file,
       name: file.name,
       size: file.size,
-      progress: 0,
-      status: "uploading" as const,
+      status: "pending" as const,
     }))
+
     setFiles((prev) => [...prev, ...newFiles])
 
-    // Simulate upload progress
-    newFiles.forEach((file) => {
-      let progress = 0
-      const interval = setInterval(() => {
-        progress += Math.random() * 25
-        if (progress >= 100) {
-          progress = 100
-          clearInterval(interval)
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === file.id ? { ...f, progress: 100, status: "processing" } : f,
-            ),
-          )
-          // Simulate processing
-          setTimeout(() => {
-            setFiles((prev) =>
-              prev.map((f) =>
-                f.id === file.id ? { ...f, status: "complete" } : f,
-              ),
-            )
-          }, 1500)
-        } else {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === file.id ? { ...f, progress } : f,
-            ),
-          )
-        }
-      }, 300)
-    })
+    // Upload each file sequentially to avoid overwhelming the server
+    for (const file of newFiles) {
+      await uploadSingleFile(file)
+    }
+  }
+
+  async function handleExtract(uploadFile: UploadFile) {
+    if (!uploadFile.invoiceId) return
+
+    updateFile(uploadFile.id, { status: "extracting" })
+
+    try {
+      await extractMutation.mutateAsync(uploadFile.invoiceId)
+      updateFile(uploadFile.id, { status: "complete" })
+      toast.success(`Extraction complete for ${uploadFile.name}`)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Extraction failed"
+      updateFile(uploadFile.id, {
+        status: "error",
+        errorMessage: message,
+      })
+      toast.error(`Extraction failed for ${uploadFile.name}`)
+    }
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -85,6 +148,16 @@ export default function InvoiceUploadPage() {
     return `${(bytes / 1048576).toFixed(1)} MB`
   }
 
+  const completedCount = files.filter((f) => f.status === "complete").length
+  const uploadedCount = files.filter(
+    (f) => f.status === "uploaded" || f.status === "complete",
+  ).length
+  const hasActiveUploads = files.some(
+    (f) => f.status === "uploading" || f.status === "extracting",
+  )
+  const allDone =
+    files.length > 0 && files.every((f) => f.status === "complete" || f.status === "error")
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -99,13 +172,49 @@ export default function InvoiceUploadPage() {
         </Button>
       </PageHeader>
 
+      {/* Vendor Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Select Vendor</CardTitle>
+          <CardDescription>
+            Choose the vendor this invoice belongs to before uploading
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-2 max-w-sm">
+            <Label htmlFor="vendor-select">Vendor</Label>
+            <Select
+              value={selectedVendorId}
+              onValueChange={setSelectedVendorId}
+              disabled={vendorsLoading}
+            >
+              <SelectTrigger id="vendor-select" className="w-full">
+                <SelectValue
+                  placeholder={
+                    vendorsLoading ? "Loading vendors..." : "Select a vendor"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {vendors.map((vendor) => (
+                  <SelectItem key={vendor.id} value={vendor.id}>
+                    {vendor.name} ({vendor.vendor_code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Drop Zone */}
       <Card>
         <CardContent className="p-0">
           <div
             className={`
               flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed p-12
-              transition-colors cursor-pointer
+              transition-colors
+              ${!selectedVendorId ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
               ${isDragging
                 ? "border-primary bg-primary/5"
                 : "border-border hover:border-primary/50 hover:bg-secondary/30"
@@ -113,11 +222,25 @@ export default function InvoiceUploadPage() {
             `}
             onDragOver={(e) => {
               e.preventDefault()
-              setIsDragging(true)
+              if (selectedVendorId) setIsDragging(true)
             }}
             onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onDrop={(e) => {
+              if (!selectedVendorId) {
+                e.preventDefault()
+                setIsDragging(false)
+                toast.error("Please select a vendor before uploading files.")
+                return
+              }
+              handleDrop(e)
+            }}
+            onClick={() => {
+              if (!selectedVendorId) {
+                toast.error("Please select a vendor before uploading files.")
+                return
+              }
+              fileInputRef.current?.click()
+            }}
           >
             <div className="rounded-full bg-primary/10 p-4">
               <Upload className="size-8 text-primary" />
@@ -130,6 +253,11 @@ export default function InvoiceUploadPage() {
                 or click to browse files
               </p>
             </div>
+            {!selectedVendorId && (
+              <p className="text-xs text-destructive font-medium">
+                Please select a vendor above first
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               Supported formats: PDF, PNG, JPG (max 25MB per file)
             </p>
@@ -139,7 +267,11 @@ export default function InvoiceUploadPage() {
               multiple
               accept=".pdf,.png,.jpg,.jpeg"
               className="hidden"
-              onChange={(e) => e.target.files && handleFiles(e.target.files)}
+              onChange={(e) => {
+                if (e.target.files) handleFiles(e.target.files)
+                // Reset input so the same file can be selected again
+                e.target.value = ""
+              }}
             />
           </div>
         </CardContent>
@@ -151,8 +283,8 @@ export default function InvoiceUploadPage() {
           <CardHeader>
             <CardTitle className="text-base">Upload Queue</CardTitle>
             <CardDescription>
-              {files.filter((f) => f.status === "complete").length} of {files.length} files
-              processed
+              {uploadedCount} of {files.length} files uploaded
+              {completedCount > 0 && ` \u00B7 ${completedCount} extracted`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -174,8 +306,14 @@ export default function InvoiceUploadPage() {
                       {file.status === "complete" && (
                         <CheckCircle className="size-4 text-green-600" />
                       )}
-                      {file.status === "processing" && (
+                      {(file.status === "uploading" || file.status === "extracting") && (
                         <Loader2 className="size-4 text-primary animate-spin" />
+                      )}
+                      {file.status === "error" && (
+                        <AlertCircle className="size-4 text-destructive" />
+                      )}
+                      {file.status === "uploaded" && (
+                        <CheckCircle className="size-4 text-blue-600" />
                       )}
                       <Button
                         variant="ghost"
@@ -185,15 +323,43 @@ export default function InvoiceUploadPage() {
                           e.stopPropagation()
                           removeFile(file.id)
                         }}
+                        disabled={
+                          file.status === "uploading" ||
+                          file.status === "extracting"
+                        }
                       >
                         <X className="size-3" />
                       </Button>
                     </div>
                   </div>
-                  {file.status === "uploading" && (
-                    <Progress value={file.progress} className="h-1.5 mt-2" />
+                  {/* Status Messages */}
+                  {file.status === "pending" && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Waiting to upload...
+                    </p>
                   )}
-                  {file.status === "processing" && (
+                  {file.status === "uploading" && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Uploading to server...
+                    </p>
+                  )}
+                  {file.status === "uploaded" && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-blue-600">
+                        Uploaded successfully
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-2 text-xs"
+                        onClick={() => handleExtract(file)}
+                      >
+                        <Sparkles className="size-3 mr-1" />
+                        Extract Data
+                      </Button>
+                    </div>
+                  )}
+                  {file.status === "extracting" && (
                     <p className="text-xs text-muted-foreground mt-1">
                       AI extracting data...
                     </p>
@@ -203,6 +369,11 @@ export default function InvoiceUploadPage() {
                       Extraction complete
                     </p>
                   )}
+                  {file.status === "error" && (
+                    <p className="text-xs text-destructive mt-1">
+                      {file.errorMessage ?? "An error occurred"}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
@@ -210,22 +381,39 @@ export default function InvoiceUploadPage() {
         </Card>
       )}
 
-      {/* Upload Action */}
+      {/* Actions */}
       {files.length > 0 && (
         <div className="flex justify-end gap-3">
           <Button
             variant="outline"
             onClick={() => setFiles([])}
+            disabled={hasActiveUploads}
           >
             Clear All
           </Button>
-          <Button
-            onClick={() => toast.success("Invoices uploaded and queued for processing!")}
-            disabled={files.some((f) => f.status === "uploading")}
-          >
-            <Upload className="size-4" />
-            Upload & Extract
-          </Button>
+          {files.some((f) => f.status === "uploaded") && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                const uploaded = files.filter((f) => f.status === "uploaded")
+                uploaded.forEach((f) => handleExtract(f))
+              }}
+              disabled={hasActiveUploads}
+            >
+              <Sparkles className="size-4" />
+              Extract All
+            </Button>
+          )}
+          {allDone && (
+            <Button
+              onClick={() => {
+                toast.success("Invoices uploaded and processed!")
+                router.push("/invoices")
+              }}
+            >
+              View Invoices
+            </Button>
+          )}
         </div>
       )}
     </div>
