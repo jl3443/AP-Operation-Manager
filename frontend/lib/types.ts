@@ -213,6 +213,8 @@ export interface Exception_ {
   resolution_notes?: string
   resolved_at?: string
   resolved_by?: string
+  ai_suggested_resolution?: string
+  ai_severity_reasoning?: string
   comments: ExceptionComment[]
   created_at: string
   updated_at: string
@@ -286,7 +288,31 @@ export interface DashboardKPI {
 export interface FunnelStage {
   stage: string
   count: number
-  percentage: number
+  amount: number
+}
+
+export interface FunnelData {
+  stages: FunnelStage[]
+}
+
+export interface TrendPoint {
+  date: string
+  value: number
+  label?: string
+}
+
+export interface TrendData {
+  series_name: string
+  data_points: TrendPoint[]
+}
+
+export interface VendorSummary {
+  vendor_id: string
+  vendor_name: string
+  invoice_count: number
+  total_amount: number
+  exception_count: number
+  avg_processing_days: number
 }
 
 // ============================================================
@@ -336,4 +362,19 @@ export interface Notification {
   related_entity_id?: string
   is_read: boolean
   created_at: string
+}
+
+// ============================================================
+// AI Chat
+// ============================================================
+
+export interface AIChatMessage {
+  role: "user" | "assistant"
+  content: string
+  timestamp: string
+}
+
+export interface AIChatResponse {
+  response: string
+  conversation_id: string
 }

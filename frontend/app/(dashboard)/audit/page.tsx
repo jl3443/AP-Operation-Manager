@@ -34,6 +34,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+// TODO: Replace with real API when global audit trail endpoint is available.
+// Currently only per-invoice audit trail exists at GET /invoices/{id}/audit-trail.
 const mockAuditLogs = [
   { id: "log-001", timestamp: "2024-02-28 15:15:32", entity: "Invoice", entity_id: "INV-2024-0892", action: "status_changed", user: "AI System", details: "Status changed from matching to pending_approval", icon: CheckCircle },
   { id: "log-002", timestamp: "2024-02-28 15:15:30", entity: "Match", entity_id: "INV-2024-0892", action: "match_completed", user: "AI System", details: "Three-way match completed with score 98.5%", icon: CheckCircle },

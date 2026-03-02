@@ -11,13 +11,16 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
-  Clock,
 } from "lucide-react"
 import { toast } from "sonner"
 
+import {
+  useImportPurchaseOrders,
+  useImportGoodsReceipts,
+  useImportVendors,
+} from "@/hooks/use-import"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
@@ -35,8 +38,19 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+interface ImportRecord {
+  id: string
+  type: string
+  status: "completed" | "failed"
+  records: number
+  failed: number
+  date: string
+  errors?: string[]
+}
+
 const importCards = [
   {
+    key: "purchase_orders" as const,
     title: "Purchase Orders",
     description: "Import purchase orders from your ERP system to enable automated invoice matching.",
     icon: Package,
@@ -44,6 +58,7 @@ const importCards = [
     fields: "PO Number, Vendor Code, Line Items, Quantities, Prices",
   },
   {
+    key: "goods_receipts" as const,
     title: "Goods Receipts",
     description: "Import goods receipt notes (GRNs) for three-way matching with invoices and POs.",
     icon: Truck,
@@ -51,6 +66,7 @@ const importCards = [
     fields: "GRN Number, PO Number, Vendor Code, Received Quantities",
   },
   {
+    key: "vendors" as const,
     title: "Vendor Master Data",
     description: "Import or update your vendor master data including payment terms and banking info.",
     icon: Building2,
@@ -59,30 +75,66 @@ const importCards = [
   },
 ]
 
-const recentImports = [
-  { id: "imp-001", type: "Purchase Orders", status: "completed", records: 245, failed: 2, date: "2024-02-28 14:30", duration: "12s" },
-  { id: "imp-002", type: "Goods Receipts", status: "completed", records: 189, failed: 0, date: "2024-02-28 10:15", duration: "8s" },
-  { id: "imp-003", type: "Vendor Master Data", status: "completed", records: 45, failed: 1, date: "2024-02-27 16:45", duration: "3s" },
-  { id: "imp-004", type: "Purchase Orders", status: "failed", records: 0, failed: 312, date: "2024-02-27 09:00", duration: "1s" },
-  { id: "imp-005", type: "Goods Receipts", status: "processing", records: 156, failed: 0, date: "2024-02-26 11:30", duration: "..." },
-]
-
-const statusConfig: Record<string, { icon: React.ElementType; className: string; label: string }> = {
+const statusConfig = {
   completed: { icon: CheckCircle, className: "text-green-600", label: "Completed" },
   failed: { icon: XCircle, className: "text-red-600", label: "Failed" },
-  processing: { icon: Loader2, className: "text-primary animate-spin", label: "Processing" },
-  pending: { icon: Clock, className: "text-amber-600", label: "Pending" },
 }
 
 export default function ImportPage() {
   const fileInputRefs = React.useRef<Record<number, HTMLInputElement | null>>({})
+  const [importHistory, setImportHistory] = React.useState<ImportRecord[]>([])
+
+  const poMutation = useImportPurchaseOrders()
+  const grMutation = useImportGoodsReceipts()
+  const vendorMutation = useImportVendors()
+
+  const mutations = {
+    purchase_orders: poMutation,
+    goods_receipts: grMutation,
+    vendors: vendorMutation,
+  }
 
   function handleUpload(index: number) {
     fileInputRefs.current[index]?.click()
   }
 
-  function handleFileChange(type: string) {
-    toast.success(`${type} file uploaded successfully. Processing started.`)
+  function handleFileChange(cardKey: "purchase_orders" | "goods_receipts" | "vendors", title: string, index: number) {
+    const fileInput = fileInputRefs.current[index]
+    const file = fileInput?.files?.[0]
+    if (!file) return
+
+    const mutation = mutations[cardKey]
+
+    mutation.mutate(file, {
+      onSuccess: (data) => {
+        const record: ImportRecord = {
+          id: `imp-${Date.now()}`,
+          type: title,
+          status: data.errors > 0 && data.created === 0 ? "failed" : "completed",
+          records: data.created,
+          failed: data.errors,
+          date: new Date().toLocaleString(),
+          errors: data.error_details,
+        }
+        setImportHistory((prev) => [record, ...prev])
+        toast.success(`${title}: ${data.created} record(s) imported${data.errors > 0 ? `, ${data.errors} error(s)` : ""}`)
+      },
+      onError: (err) => {
+        const record: ImportRecord = {
+          id: `imp-${Date.now()}`,
+          type: title,
+          status: "failed",
+          records: 0,
+          failed: 0,
+          date: new Date().toLocaleString(),
+        }
+        setImportHistory((prev) => [record, ...prev])
+        toast.error(`${title} import failed: ${err.message}`)
+      },
+    })
+
+    // Reset input so re-selecting the same file triggers onChange
+    if (fileInput) fileInput.value = ""
   }
 
   return (
@@ -96,6 +148,7 @@ export default function ImportPage() {
       <div className="grid gap-4 md:grid-cols-3">
         {importCards.map((card, index) => {
           const Icon = card.icon
+          const mutation = mutations[card.key]
           return (
             <Card key={card.title}>
               <CardHeader>
@@ -124,16 +177,21 @@ export default function ImportPage() {
                   size="sm"
                   className="flex-1"
                   onClick={() => handleUpload(index)}
+                  disabled={mutation.isPending}
                 >
-                  <Upload className="size-3.5" />
-                  Upload
+                  {mutation.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="size-3.5" />
+                  )}
+                  {mutation.isPending ? "Importing..." : "Upload"}
                 </Button>
                 <input
                   ref={(el) => { fileInputRefs.current[index] = el }}
                   type="file"
                   accept=".csv,.xlsx"
                   className="hidden"
-                  onChange={() => handleFileChange(card.title)}
+                  onChange={() => handleFileChange(card.key, card.title, index)}
                 />
               </CardFooter>
             </Card>
@@ -141,36 +199,38 @@ export default function ImportPage() {
         })}
       </div>
 
-      {/* Recent Imports */}
+      {/* Import History (session-local) */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <FileSpreadsheet className="size-4" />
-            Recent Imports
+            Import History
           </CardTitle>
         </CardHeader>
         <CardContent className="px-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Job ID</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Records</TableHead>
-                <TableHead className="text-right">Failed</TableHead>
+                <TableHead className="text-right">Records Created</TableHead>
+                <TableHead className="text-right">Errors</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Duration</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recentImports.map((imp) => {
+              {importHistory.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-12">
+                    No imports yet this session. Upload a CSV file above to get started.
+                  </TableCell>
+                </TableRow>
+              )}
+              {importHistory.map((imp) => {
                 const status = statusConfig[imp.status]
                 const StatusIcon = status.icon
                 return (
                   <TableRow key={imp.id}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {imp.id}
-                    </TableCell>
                     <TableCell className="font-medium">{imp.type}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
@@ -190,9 +250,6 @@ export default function ImportPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {imp.date}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {imp.duration}
                     </TableCell>
                   </TableRow>
                 )

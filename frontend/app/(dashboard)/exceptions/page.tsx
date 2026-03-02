@@ -5,18 +5,19 @@ import Link from "next/link"
 import {
   AlertTriangle,
   Search,
-  Filter,
   Clock,
   User,
   CheckCircle2,
   ArrowUpRight,
 } from "lucide-react"
 
+import { useExceptions } from "@/hooks/use-exceptions"
 import { PageHeader } from "@/components/page-header"
 import { ExceptionTypeBadge } from "@/components/exception-type-badge"
 import { SeverityIcon } from "@/components/severity-icon"
-import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
 import { KpiCard } from "@/components/kpi-card"
+import { KpiCardSkeleton, TableSkeleton } from "@/components/loading-skeleton"
+import { QueryError } from "@/components/query-error"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -37,31 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import type { ExceptionType, ExceptionSeverity, ExceptionStatus } from "@/lib/types"
-
-// Mock Data
-const mockExceptions: Array<{
-  id: string
-  invoice_number: string
-  invoice_id: string
-  vendor: string
-  exception_type: ExceptionType
-  severity: ExceptionSeverity
-  amount: number
-  age_days: number
-  assigned_to: string
-  status: ExceptionStatus
-  description: string
-}> = [
-  { id: "exc-001", invoice_number: "INV-2024-0890", invoice_id: "inv-003", vendor: "Global Supply Co", exception_type: "amount_variance", severity: "high", amount: 45670.00, age_days: 2, assigned_to: "Sarah K.", status: "in_progress", description: "Line 2 unit price $15.00 vs PO $12.50" },
-  { id: "exc-002", invoice_number: "INV-2024-0875", invoice_id: "inv-011", vendor: "Metro Electric", exception_type: "missing_po", severity: "medium", amount: 8420.00, age_days: 5, assigned_to: "John D.", status: "assigned", description: "No matching PO found for this invoice" },
-  { id: "exc-003", invoice_number: "INV-2024-0868", invoice_id: "inv-012", vendor: "PackRight Inc", exception_type: "duplicate_invoice", severity: "critical", amount: 1560.00, age_days: 1, assigned_to: "Unassigned", status: "open", description: "Possible duplicate of INV-2024-0850" },
-  { id: "exc-004", invoice_number: "INV-2024-0862", invoice_id: "inv-013", vendor: "Acme Corp", exception_type: "quantity_variance", severity: "medium", amount: 22340.00, age_days: 3, assigned_to: "Sarah K.", status: "in_progress", description: "Received 45 units vs invoiced 50 units" },
-  { id: "exc-005", invoice_number: "INV-2024-0855", invoice_id: "inv-014", vendor: "TechParts Ltd", exception_type: "expired_po", severity: "low", amount: 3280.50, age_days: 7, assigned_to: "Mike R.", status: "assigned", description: "PO-4518 expired, GRN pending" },
-  { id: "exc-006", invoice_number: "INV-2024-0848", invoice_id: "inv-015", vendor: "Steel Works Ltd", exception_type: "amount_variance", severity: "high", amount: 67800.00, age_days: 4, assigned_to: "John D.", status: "escalated", description: "Invoice total exceeds PO by 8.2% (tolerance: 5%)" },
-  { id: "exc-007", invoice_number: "INV-2024-0841", invoice_id: "inv-016", vendor: "CloudServ Inc", exception_type: "tax_variance", severity: "low", amount: 7500.00, age_days: 6, assigned_to: "Sarah K.", status: "in_progress", description: "Tax rate 10% vs expected 8.5%" },
-  { id: "exc-008", invoice_number: "INV-2024-0836", invoice_id: "inv-017", vendor: "FreshFoods Co", exception_type: "vendor_mismatch", severity: "medium", amount: 4230.00, age_days: 2, assigned_to: "Unassigned", status: "open", description: "Invoice vendor name doesn't match PO vendor" },
-]
+import type { ExceptionStatus } from "@/lib/types"
 
 function SLAIndicator({ ageDays }: { ageDays: number }) {
   if (ageDays < 1) {
@@ -91,10 +68,34 @@ const statusLabels: Record<ExceptionStatus, { label: string; className: string }
   in_progress: { label: "In Progress", className: "bg-amber-50 text-amber-700 border-amber-200" },
   resolved: { label: "Resolved", className: "bg-green-50 text-green-700 border-green-200" },
   escalated: { label: "Escalated", className: "bg-red-50 text-red-700 border-red-200" },
-  auto_resolved: { label: "Auto-Resolved", className: "bg-purple-50 text-purple-700 border-purple-200" },
 }
 
 export default function ExceptionsPage() {
+  const [page, setPage] = React.useState(1)
+  const [statusFilter, setStatusFilter] = React.useState<string | undefined>()
+  const [severityFilter, setSeverityFilter] = React.useState<string | undefined>()
+  const [typeFilter, setTypeFilter] = React.useState<string | undefined>()
+
+  const { data, isLoading, error, refetch } = useExceptions({
+    page,
+    page_size: 20,
+    status: statusFilter,
+    severity: severityFilter,
+    exception_type: typeFilter,
+  })
+
+  const items = data?.items ?? []
+  const openCount = items.filter((e) => e.status === "open").length
+  const assignedCount = items.filter((e) => e.status === "assigned").length
+  const inProgressCount = items.filter((e) => e.status === "in_progress").length
+  const resolvedCount = items.filter((e) => e.status === "resolved").length
+
+  function getAgeDays(createdAt: string): number {
+    const created = new Date(createdAt)
+    const now = new Date()
+    return Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -104,30 +105,21 @@ export default function ExceptionsPage() {
 
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          title="Open"
-          value="12"
-          icon={AlertTriangle}
-          trend={{ value: -5, label: "vs last week" }}
-        />
-        <KpiCard
-          title="Assigned"
-          value="8"
-          icon={User}
-          trend={{ value: 2, label: "vs last week" }}
-        />
-        <KpiCard
-          title="In Progress"
-          value="6"
-          icon={Clock}
-          trend={{ value: 10, label: "vs last week" }}
-        />
-        <KpiCard
-          title="Resolved (MTD)"
-          value="45"
-          icon={CheckCircle2}
-          trend={{ value: 18, label: "vs last month" }}
-        />
+        {isLoading ? (
+          <>
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
+          </>
+        ) : (
+          <>
+            <KpiCard title="Open" value={openCount.toString()} icon={AlertTriangle} />
+            <KpiCard title="Assigned" value={assignedCount.toString()} icon={User} />
+            <KpiCard title="In Progress" value={inProgressCount.toString()} icon={Clock} />
+            <KpiCard title="Resolved" value={resolvedCount.toString()} icon={CheckCircle2} />
+          </>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -135,9 +127,13 @@ export default function ExceptionsPage() {
         <CardContent className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input placeholder="Search exceptions..." className="pl-9 h-8" />
+{/* TODO: Wire when backend adds search param to GET /exceptions */}
+            <Input placeholder="Search exceptions..." className="pl-9 h-8" disabled />
           </div>
-          <Select>
+          <Select
+            value={typeFilter ?? "all"}
+            onValueChange={(v) => { setTypeFilter(v === "all" ? undefined : v); setPage(1) }}
+          >
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Exception Type" />
             </SelectTrigger>
@@ -149,9 +145,13 @@ export default function ExceptionsPage() {
               <SelectItem value="duplicate_invoice">Duplicate</SelectItem>
               <SelectItem value="vendor_mismatch">Vendor Mismatch</SelectItem>
               <SelectItem value="tax_variance">Tax Variance</SelectItem>
+              <SelectItem value="expired_po">Expired PO</SelectItem>
             </SelectContent>
           </Select>
-          <Select>
+          <Select
+            value={severityFilter ?? "all"}
+            onValueChange={(v) => { setSeverityFilter(v === "all" ? undefined : v); setPage(1) }}
+          >
             <SelectTrigger className="w-[130px]">
               <SelectValue placeholder="Severity" />
             </SelectTrigger>
@@ -163,7 +163,10 @@ export default function ExceptionsPage() {
               <SelectItem value="low">Low</SelectItem>
             </SelectContent>
           </Select>
-          <Select>
+          <Select
+            value={statusFilter ?? "all"}
+            onValueChange={(v) => { setStatusFilter(v === "all" ? undefined : v); setPage(1) }}
+          >
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -175,86 +178,90 @@ export default function ExceptionsPage() {
               <SelectItem value="escalated">Escalated</SelectItem>
             </SelectContent>
           </Select>
-          <Select>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Assigned To" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Users</SelectItem>
-              <SelectItem value="sarah">Sarah K.</SelectItem>
-              <SelectItem value="john">John D.</SelectItem>
-              <SelectItem value="mike">Mike R.</SelectItem>
-              <SelectItem value="unassigned">Unassigned</SelectItem>
-            </SelectContent>
-          </Select>
         </CardContent>
       </Card>
 
       {/* Exception Table */}
       <Card className="py-0">
         <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice #</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>Exception Type</TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Age</TableHead>
-                <TableHead>Assigned To</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>SLA</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mockExceptions.map((exc) => (
-                <TableRow key={exc.id} className="cursor-pointer">
-                  <TableCell>
-                    <Link
-                      href={`/invoices/${exc.invoice_id}`}
-                      className="font-medium text-primary hover:underline flex items-center gap-1"
-                    >
-                      {exc.invoice_number}
-                      <ArrowUpRight className="size-3" />
-                    </Link>
-                  </TableCell>
-                  <TableCell className="font-medium">{exc.vendor}</TableCell>
-                  <TableCell>
-                    <ExceptionTypeBadge type={exc.exception_type} />
-                  </TableCell>
-                  <TableCell>
-                    <SeverityIcon severity={exc.severity} showLabel />
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    ${exc.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {exc.age_days}d
-                  </TableCell>
-                  <TableCell>
-                    <span className={cn(
-                      "text-sm",
-                      exc.assigned_to === "Unassigned" && "text-muted-foreground italic"
-                    )}>
-                      {exc.assigned_to}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={statusLabels[exc.status].className}
-                    >
-                      {statusLabels[exc.status].label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <SLAIndicator ageDays={exc.age_days} />
-                  </TableCell>
+          {error ? (
+            <div className="p-6">
+              <QueryError error={error} retry={() => refetch()} />
+            </div>
+          ) : isLoading ? (
+            <div className="p-6">
+              <TableSkeleton rows={8} cols={7} />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Exception Type</TableHead>
+                  <TableHead>Severity</TableHead>
+                  <TableHead>Age</TableHead>
+                  <TableHead>Assigned To</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>SLA</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {items.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                      No exceptions found. Exceptions will appear here when invoice matches detect issues.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {items.map((exc) => {
+                  const ageDays = getAgeDays(exc.created_at)
+                  return (
+                    <TableRow key={exc.id} className="cursor-pointer">
+                      <TableCell>
+                        <Link
+                          href={`/invoices/${exc.invoice_id}`}
+                          className="font-medium text-primary hover:underline flex items-center gap-1"
+                        >
+                          {exc.invoice_id.slice(0, 8)}...
+                          <ArrowUpRight className="size-3" />
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <ExceptionTypeBadge type={exc.exception_type} />
+                      </TableCell>
+                      <TableCell>
+                        <SeverityIcon severity={exc.severity} showLabel />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {ageDays}d
+                      </TableCell>
+                      <TableCell>
+                        <span className={cn(
+                          "text-sm",
+                          !exc.assigned_to && "text-muted-foreground italic"
+                        )}>
+                          {exc.assigned_to ? exc.assigned_to.slice(0, 8) + "..." : "Unassigned"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {statusLabels[exc.status] && (
+                          <Badge
+                            variant="outline"
+                            className={statusLabels[exc.status].className}
+                          >
+                            {statusLabels[exc.status].label}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <SLAIndicator ageDays={ageDays} />
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

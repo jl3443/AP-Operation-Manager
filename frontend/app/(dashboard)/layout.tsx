@@ -1,10 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Bell, Search, Moon, Sun } from "lucide-react"
+import { AIAssistantPanel } from "@/components/ai-assistant-panel"
 import { useTheme } from "next-themes"
+import { useQueryClient } from "@tanstack/react-query"
 
+import { useCurrentUser } from "@/hooks/use-auth"
 import { SidebarNav } from "@/components/sidebar-nav"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,7 +40,23 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const queryClient = useQueryClient()
   const { theme, setTheme } = useTheme()
+  const { data: user } = useCurrentUser()
+
+  const userInitials = user?.name
+    ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()
+    : "??"
+  const userDisplayName = user?.name
+    ? user.name.split(" ").map((n, i) => (i === 0 ? n : n[0] + ".")).join(" ")
+    : "User"
+
+  function handleSignOut() {
+    localStorage.removeItem("access_token")
+    queryClient.clear()
+    router.push("/login")
+  }
 
   // Find the matching page title
   const pageTitle = Object.entries(pageTitles).find(([path]) =>
@@ -77,6 +96,9 @@ export default function DashboardLayout({
               <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
               <span className="sr-only">Toggle theme</span>
             </Button>
+
+            {/* AI Assistant */}
+            <AIAssistantPanel />
 
             {/* Notifications */}
             <DropdownMenu>
@@ -124,26 +146,26 @@ export default function DashboardLayout({
                 <Button variant="ghost" className="gap-2 px-2 h-8">
                   <Avatar className="size-6">
                     <AvatarFallback className="text-xs bg-primary text-primary-foreground">
-                      KS
+                      {userInitials}
                     </AvatarFallback>
                   </Avatar>
                   <span className="text-sm font-medium hidden sm:inline">
-                    Kyle S.
+                    {userDisplayName}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuLabel className="flex flex-col">
-                  <span>Kyle Sanders</span>
+                  <span>{user?.name ?? "User"}</span>
                   <span className="text-xs text-muted-foreground font-normal">
-                    admin@company.com
+                    {user?.email ?? ""}
                   </span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>Profile</DropdownMenuItem>
                 <DropdownMenuItem>Preferences</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive">
+                <DropdownMenuItem className="text-destructive" onClick={handleSignOut}>
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>

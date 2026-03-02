@@ -5,7 +5,6 @@ import {
   Clock,
   AlertTriangle,
   TrendingUp,
-  Building2,
   ArrowRight,
 } from "lucide-react"
 import Link from "next/link"
@@ -17,11 +16,14 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  ResponsiveContainer,
 } from "recharts"
 
+import { useDashboardKPIs, useFunnelData, useTopVendors } from "@/hooks/use-dashboard"
+import { useInvoices } from "@/hooks/use-invoices"
 import { KpiCard } from "@/components/kpi-card"
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
+import { KpiCardSkeleton, ChartSkeleton, TableSkeleton } from "@/components/loading-skeleton"
+import { QueryError } from "@/components/query-error"
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -39,25 +41,30 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 
-// -- Mock Data --
-
-const funnelData = [
-  { stage: "Received", count: 1245, fill: "var(--color-received)" },
-  { stage: "Extracted", count: 1180, fill: "var(--color-extracted)" },
-  { stage: "Matched", count: 1020, fill: "var(--color-matched)" },
-  { stage: "Approved", count: 945, fill: "var(--color-approved)" },
-  { stage: "Posted", count: 890, fill: "var(--color-posted)" },
-]
+const funnelColors: Record<string, string> = {
+  draft: "oklch(0.70 0.10 250)",
+  extracted: "oklch(0.65 0.15 255)",
+  matching: "oklch(0.60 0.15 220)",
+  exception: "oklch(0.60 0.15 30)",
+  pending_approval: "oklch(0.55 0.15 55)",
+  approved: "oklch(0.55 0.15 160)",
+  rejected: "oklch(0.55 0.15 15)",
+  posted: "oklch(0.50 0.15 145)",
+}
 
 const funnelConfig = {
   count: { label: "Invoices" },
-  received: { label: "Received", color: "oklch(0.65 0.15 255)" },
-  extracted: { label: "Extracted", color: "oklch(0.60 0.15 220)" },
-  matched: { label: "Matched", color: "oklch(0.55 0.15 195)" },
-  approved: { label: "Approved", color: "oklch(0.55 0.15 160)" },
-  posted: { label: "Posted", color: "oklch(0.50 0.15 145)" },
+  draft: { label: "Draft", color: funnelColors.draft },
+  extracted: { label: "Extracted", color: funnelColors.extracted },
+  matching: { label: "Matching", color: funnelColors.matching },
+  exception: { label: "Exception", color: funnelColors.exception },
+  pending_approval: { label: "Pending Approval", color: funnelColors.pending_approval },
+  approved: { label: "Approved", color: funnelColors.approved },
+  rejected: { label: "Rejected", color: funnelColors.rejected },
+  posted: { label: "Posted", color: funnelColors.posted },
 } satisfies ChartConfig
 
+// TODO: Wire to real analytics when backend endpoint available
 const automationData = [
   { month: "Jul", rate: 62 },
   { month: "Aug", rate: 65 },
@@ -73,132 +80,122 @@ const automationConfig = {
   rate: { label: "Automation Rate %", color: "oklch(0.55 0.15 160)" },
 } satisfies ChartConfig
 
-const recentInvoices = [
-  {
-    id: "inv-001",
-    number: "INV-2024-0892",
-    vendor: "Acme Corp",
-    date: "2024-02-28",
-    amount: 12450.0,
-    status: "pending_approval" as const,
-    source: "email",
-  },
-  {
-    id: "inv-002",
-    number: "INV-2024-0891",
-    vendor: "TechParts Ltd",
-    date: "2024-02-28",
-    amount: 3280.5,
-    status: "matching" as const,
-    source: "manual",
-  },
-  {
-    id: "inv-003",
-    number: "INV-2024-0890",
-    vendor: "Global Supply Co",
-    date: "2024-02-27",
-    amount: 45670.0,
-    status: "exception" as const,
-    source: "email",
-  },
-  {
-    id: "inv-004",
-    number: "INV-2024-0889",
-    vendor: "Office Depot",
-    date: "2024-02-27",
-    amount: 892.15,
-    status: "approved" as const,
-    source: "api",
-  },
-  {
-    id: "inv-005",
-    number: "INV-2024-0888",
-    vendor: "CloudServ Inc",
-    date: "2024-02-26",
-    amount: 7500.0,
-    status: "posted" as const,
-    source: "csv",
-  },
+const vendorColors = [
+  "oklch(0.55 0.15 255)",
+  "oklch(0.60 0.12 220)",
+  "oklch(0.55 0.12 195)",
+  "oklch(0.58 0.12 165)",
+  "oklch(0.50 0.12 145)",
 ]
-
-const topVendors = [
-  { name: "Acme Corp", invoices: 89, fill: "var(--color-acme)" },
-  { name: "TechParts", invoices: 67, fill: "var(--color-techparts)" },
-  { name: "Global Supply", invoices: 54, fill: "var(--color-global)" },
-  { name: "Office Depot", invoices: 42, fill: "var(--color-office)" },
-  { name: "CloudServ", invoices: 38, fill: "var(--color-cloudserv)" },
-]
-
-const vendorConfig = {
-  invoices: { label: "Invoices" },
-  acme: { label: "Acme Corp", color: "oklch(0.55 0.15 255)" },
-  techparts: { label: "TechParts", color: "oklch(0.60 0.12 220)" },
-  global: { label: "Global Supply", color: "oklch(0.55 0.12 195)" },
-  office: { label: "Office Depot", color: "oklch(0.58 0.12 165)" },
-  cloudserv: { label: "CloudServ", color: "oklch(0.50 0.12 145)" },
-} satisfies ChartConfig
 
 export default function DashboardPage() {
+  const { data: kpis, isLoading: kpisLoading, error: kpisError, refetch: refetchKpis } = useDashboardKPIs()
+  const { data: funnel, isLoading: funnelLoading } = useFunnelData()
+  const { data: topVendors, isLoading: vendorsLoading } = useTopVendors(5)
+  const { data: invoiceData, isLoading: invoicesLoading } = useInvoices({
+    page: 1,
+    page_size: 5,
+    sort_by: "created_at",
+    sort_order: "desc",
+  })
+
+  const funnelChartData = funnel?.stages.map((s) => ({
+    stage: s.stage.charAt(0).toUpperCase() + s.stage.slice(1).replaceAll("_", " "),
+    count: s.count,
+    fill: funnelColors[s.stage] ?? "oklch(0.60 0.10 250)",
+  })) ?? []
+
+  const vendorChartData = topVendors?.map((v, i) => ({
+    name: v.vendor_name,
+    invoices: v.invoice_count,
+    fill: vendorColors[i % vendorColors.length],
+  })) ?? []
+
+  const vendorConfigDynamic: ChartConfig = {
+    invoices: { label: "Invoices" },
+    ...Object.fromEntries(
+      (topVendors ?? []).map((v, i) => [
+        v.vendor_name.toLowerCase().replace(/\s+/g, ""),
+        { label: v.vendor_name, color: vendorColors[i % vendorColors.length] },
+      ])
+    ),
+  }
+
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          title="Total Invoices"
-          value="1,245"
-          icon={FileText}
-          trend={{ value: 12, label: "vs last month" }}
-        />
-        <KpiCard
-          title="Pending"
-          value="38"
-          icon={Clock}
-          trend={{ value: -8, label: "vs last month" }}
-        />
-        <KpiCard
-          title="Exception Rate"
-          value="4.2%"
-          icon={AlertTriangle}
-          trend={{ value: -15, label: "vs last month" }}
-        />
-        <KpiCard
-          title="Avg Cycle Time"
-          value="1.8 days"
-          icon={TrendingUp}
-          trend={{ value: -22, label: "vs last month" }}
-        />
+        {kpisLoading ? (
+          <>
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
+          </>
+        ) : kpisError ? (
+          <div className="col-span-full">
+            <QueryError error={kpisError} retry={() => refetchKpis()} />
+          </div>
+        ) : (
+          <>
+            <KpiCard
+              title="Total Invoices"
+              value={kpis?.total_invoices.toLocaleString() ?? "0"}
+              icon={FileText}
+            />
+            <KpiCard
+              title="Pending Approval"
+              value={kpis?.pending_approval.toString() ?? "0"}
+              icon={Clock}
+            />
+            <KpiCard
+              title="Open Exceptions"
+              value={kpis?.open_exceptions.toString() ?? "0"}
+              icon={AlertTriangle}
+            />
+            <KpiCard
+              title="Match Rate"
+              value={`${kpis?.match_rate_pct.toFixed(1) ?? "0"}%`}
+              icon={TrendingUp}
+            />
+          </>
+        )}
       </div>
 
       {/* Charts Row */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Invoice Processing Funnel */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Invoice Processing Funnel</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={funnelConfig} className="h-[250px] w-full">
-              <BarChart
-                data={funnelData}
-                layout="vertical"
-                margin={{ left: 10, right: 20 }}
-              >
-                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                <YAxis
-                  dataKey="stage"
-                  type="category"
-                  tickLine={false}
-                  axisLine={false}
-                  width={80}
-                  fontSize={12}
-                />
-                <XAxis type="number" hide />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+        {funnelLoading ? (
+          <ChartSkeleton />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Invoice Processing Funnel</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={funnelConfig} className="h-[250px] w-full">
+                <BarChart
+                  data={funnelChartData}
+                  layout="vertical"
+                  margin={{ left: 10, right: 20 }}
+                >
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                  <YAxis
+                    dataKey="stage"
+                    type="category"
+                    tickLine={false}
+                    axisLine={false}
+                    width={100}
+                    fontSize={12}
+                  />
+                  <XAxis type="number" hide />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Automation Rate Trend */}
         <Card>
@@ -252,69 +249,88 @@ export default function DashboardPage() {
             </CardAction>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>
-                      <Link
-                        href={`/invoices/${invoice.id}`}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        {invoice.number}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{invoice.vendor}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {invoice.date}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      ${invoice.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell>
-                      <InvoiceStatusBadge status={invoice.status} />
-                    </TableCell>
+            {invoicesLoading ? (
+              <TableSkeleton rows={5} cols={4} />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {invoiceData?.items.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                        No invoices yet. Upload or import data to get started.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {invoiceData?.items.map((invoice) => (
+                    <TableRow key={invoice.id}>
+                      <TableCell>
+                        <Link
+                          href={`/invoices/${invoice.id}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {invoice.invoice_number}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {invoice.invoice_date}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${invoice.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell>
+                        <InvoiceStatusBadge status={invoice.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
         {/* Top Vendors */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Top Vendors by Volume</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={vendorConfig} className="h-[280px] w-full">
-              <BarChart data={topVendors} margin={{ left: 0, right: 10 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="name"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={11}
-                  angle={-20}
-                  textAnchor="end"
-                  height={50}
-                />
-                <YAxis tickLine={false} axisLine={false} fontSize={12} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="invoices" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+        {vendorsLoading ? (
+          <ChartSkeleton />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Top Vendors by Volume</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {vendorChartData.length === 0 ? (
+                <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">
+                  No vendor data available
+                </div>
+              ) : (
+                <ChartContainer config={vendorConfigDynamic} className="h-[280px] w-full">
+                  <BarChart data={vendorChartData} margin={{ left: 0, right: 10 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="name"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={11}
+                      angle={-20}
+                      textAnchor="end"
+                      height={50}
+                    />
+                    <YAxis tickLine={false} axisLine={false} fontSize={12} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="invoices" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

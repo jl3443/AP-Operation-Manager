@@ -18,6 +18,8 @@ interface UploadFile {
   status: "uploading" | "processing" | "complete" | "error"
 }
 
+// TODO: Wire upload to useUploadInvoice (JSON InvoiceCreate body) + useExtractInvoice for OCR.
+// File storage not yet implemented on backend — currently uses simulated progress UI.
 export default function InvoiceUploadPage() {
   const [files, setFiles] = React.useState<UploadFile[]>([])
   const [isDragging, setIsDragging] = React.useState(false)
