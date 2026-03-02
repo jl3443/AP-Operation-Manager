@@ -1,0 +1,37 @@
+po_number,vendor_code,order_date,delivery_date,currency,status,line_number,description,quantity_ordered,unit_price,quantity_received,quantity_invoiced
+PO-2024-001,V-001,2024-01-15,2024-02-15,USD,fully_received,1,Steel Bearings 6205-2RS,500,12.50,500,0
+PO-2024-001,V-001,2024-01-15,2024-02-15,USD,fully_received,2,Steel Bearings 6206-2RS,300,15.00,300,0
+PO-2024-002,V-002,2024-01-20,2024-02-20,USD,fully_received,1,Cold Rolled Steel Sheet 4x8,100,245.00,100,0
+PO-2024-002,V-002,2024-01-20,2024-02-20,USD,fully_received,2,Hot Rolled Steel Coil,50,890.00,50,0
+PO-2024-003,V-003,2024-02-01,2024-03-01,USD,partially_received,1,Circuit Board Assembly PCB-100,1000,8.75,800,0
+PO-2024-003,V-003,2024-02-01,2024-03-01,USD,partially_received,2,Microcontroller STM32F4,1000,4.50,1000,0
+PO-2024-004,V-004,2024-02-05,2024-03-05,USD,fully_received,1,Industrial Solvent IPA 99%,200,32.00,200,0
+PO-2024-004,V-004,2024-02-05,2024-03-05,USD,fully_received,2,Epoxy Resin System 2000,100,67.50,100,0
+PO-2024-005,V-005,2024-02-10,2024-03-10,USD,open,1,LCD Display Module 7-inch,2000,23.00,0,0
+PO-2024-005,V-005,2024-02-10,2024-03-10,USD,open,2,Touch Panel Digitizer,2000,11.50,0,0
+PO-2024-006,V-006,2024-02-12,2024-03-12,USD,fully_received,1,CNC End Mill 6mm Carbide,50,89.00,50,0
+PO-2024-006,V-006,2024-02-12,2024-03-12,USD,fully_received,2,Precision Drill Bit Set,25,124.00,25,0
+PO-2024-007,V-007,2024-02-15,2024-03-01,USD,fully_received,1,Freight Service - Detroit to Chicago,1,2500.00,1,0
+PO-2024-008,V-008,2024-02-18,2024-03-18,USD,fully_received,1,Corrugated Box 24x18x12,5000,1.85,5000,0
+PO-2024-008,V-008,2024-02-18,2024-03-18,USD,fully_received,2,Stretch Wrap Film 20-inch,100,42.00,100,0
+PO-2024-009,V-009,2024-02-20,2024-03-20,USD,partially_received,1,Silicone Gasket Sheet 1/8,300,18.50,200,0
+PO-2024-009,V-009,2024-02-20,2024-03-20,USD,partially_received,2,O-Ring Kit Metric Assortment,150,35.00,150,0
+PO-2024-010,V-010,2024-02-22,2024-03-22,USD,fully_received,1,Aluminum Ingot 99.7%,1000,2.85,1000,0
+PO-2024-010,V-010,2024-02-22,2024-03-22,USD,fully_received,2,Copper Cathode Grade A,500,8.95,500,0
+PO-2024-011,V-011,2024-02-25,2024-03-25,USD,fully_received,1,Powder Coat RAL 9005 Black,50,145.00,50,0
+PO-2024-011,V-011,2024-02-25,2024-03-25,USD,fully_received,2,Primer Zinc Phosphate,30,98.00,30,0
+PO-2024-012,V-012,2024-03-01,2024-04-01,USD,open,1,Servo Motor 750W,20,425.00,0,0
+PO-2024-012,V-012,2024-03-01,2024-04-01,USD,open,2,Servo Drive Controller,20,380.00,0,0
+PO-2024-013,V-013,2024-03-05,2024-04-05,USD,fully_received,1,Hex Bolt M10x40 Grade 8.8,10000,0.15,10000,0
+PO-2024-013,V-013,2024-03-05,2024-04-05,USD,fully_received,2,Lock Nut M10 Nylon Insert,10000,0.08,10000,0
+PO-2024-014,V-014,2024-03-08,2024-04-08,USD,fully_received,1,Safety Glasses Z87.1,200,8.50,200,0
+PO-2024-014,V-014,2024-03-08,2024-04-08,USD,fully_received,2,Nitrile Gloves XL Box/100,50,12.00,50,0
+PO-2024-015,V-015,2024-03-10,2024-04-10,USD,partially_received,1,Hydraulic Hose 1/2 x 48,100,28.50,75,0
+PO-2024-015,V-015,2024-03-10,2024-04-10,USD,partially_received,2,Quick Connect Fitting 1/2,200,6.75,200,0
+PO-2024-016,V-001,2024-03-12,2024-04-12,USD,fully_received,1,Steel Bearings 6205-2RS,1000,12.25,1000,0
+PO-2024-017,V-002,2024-03-15,2024-04-15,USD,fully_received,1,Stainless Steel Sheet 316L,200,385.00,200,0
+PO-2024-018,V-017,2024-03-18,2024-04-18,USD,open,1,PLC Controller S7-1200,10,1250.00,0,0
+PO-2024-018,V-017,2024-03-18,2024-04-18,USD,open,2,HMI Panel 10-inch,10,875.00,0,0
+PO-2024-019,V-019,2024-03-20,2024-04-20,USD,fully_received,1,Shell and Tube Heat Exchanger,5,3200.00,5,0
+PO-2024-020,V-020,2024-03-22,2024-04-22,USD,fully_received,1,Kraft Paper Roll 36-inch,500,4.50,500,0
+PO-2024-020,V-020,2024-03-22,2024-04-22,USD,fully_received,2,Bubble Wrap Roll 48-inch,200,8.25,200,0

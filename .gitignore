@@ -1,27 +1,72 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ============================================
+# AI AP Operations Manager
+# ============================================
 
-# dependencies
-/node_modules
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
 
-# next.js
-/.next/
-/out/
+# Next.js
+.next/
+out/
+build/
 
-# production
-/build
+# Python
+*.egg-info/
+dist/
+.eggs/
 
-# debug
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Keep the example
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*
+# Docker volumes
+postgres_data/
+minio_data/
 
-# vercel
-.vercel
+# Uploaded files (local dev)
+uploads/
+storage/
 
-# typescript
+# Test coverage
+coverage/
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Alembic
+*.db
+
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Vercel
+.vercel
+
+# Celery
+celerybeat-schedule
+celerybeat.pid

@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "agentic-ai-showcase",
+      "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3000"],
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend", "--", "--port", "3000"],
       "port": 3000
     }
   ]

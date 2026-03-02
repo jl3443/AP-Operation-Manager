@@ -1,0 +1,32 @@
+grn_number,po_number,vendor_code,receipt_date,warehouse,po_line_number,quantity_received,condition_notes
+GRN-2024-001,PO-2024-001,V-001,2024-02-12,Warehouse A,1,500,Good condition
+GRN-2024-001,PO-2024-001,V-001,2024-02-12,Warehouse A,2,300,Good condition
+GRN-2024-002,PO-2024-002,V-002,2024-02-18,Warehouse B,1,100,Minor surface scratches on 2 sheets
+GRN-2024-002,PO-2024-002,V-002,2024-02-18,Warehouse B,2,50,Good condition
+GRN-2024-003,PO-2024-003,V-003,2024-02-28,Warehouse A,1,500,Good condition - partial delivery 1/2
+GRN-2024-003,PO-2024-003,V-003,2024-02-28,Warehouse A,2,1000,Good condition
+GRN-2024-004,PO-2024-003,V-003,2024-03-15,Warehouse A,1,300,Good condition - partial delivery 2/2
+GRN-2024-005,PO-2024-004,V-004,2024-03-03,Chemical Storage,1,200,Sealed containers intact
+GRN-2024-005,PO-2024-004,V-004,2024-03-03,Chemical Storage,2,100,Good condition
+GRN-2024-006,PO-2024-006,V-006,2024-03-10,Tool Crib,1,50,Good condition
+GRN-2024-006,PO-2024-006,V-006,2024-03-10,Tool Crib,2,25,Good condition
+GRN-2024-007,PO-2024-007,V-007,2024-02-28,N/A,1,1,Service completed
+GRN-2024-008,PO-2024-008,V-008,2024-03-15,Warehouse C,1,5000,Good condition
+GRN-2024-008,PO-2024-008,V-008,2024-03-15,Warehouse C,2,100,Good condition
+GRN-2024-009,PO-2024-009,V-009,2024-03-18,Warehouse A,1,200,Good condition - partial delivery
+GRN-2024-009,PO-2024-009,V-009,2024-03-18,Warehouse A,2,150,Good condition
+GRN-2024-010,PO-2024-010,V-010,2024-03-20,Raw Material Yard,1,1000,Weight verified
+GRN-2024-010,PO-2024-010,V-010,2024-03-20,Raw Material Yard,2,500,Weight verified
+GRN-2024-011,PO-2024-011,V-011,2024-03-23,Paint Shop,1,50,Good condition
+GRN-2024-011,PO-2024-011,V-011,2024-03-23,Paint Shop,2,30,Good condition
+GRN-2024-012,PO-2024-013,V-013,2024-04-02,Warehouse A,1,10000,Good condition
+GRN-2024-012,PO-2024-013,V-013,2024-04-02,Warehouse A,2,10000,Good condition
+GRN-2024-013,PO-2024-014,V-014,2024-04-05,Safety Store,1,200,Good condition
+GRN-2024-013,PO-2024-014,V-014,2024-04-05,Safety Store,2,50,Good condition
+GRN-2024-014,PO-2024-015,V-015,2024-04-08,Maintenance Shop,1,75,Good condition - partial delivery
+GRN-2024-014,PO-2024-015,V-015,2024-04-08,Maintenance Shop,2,200,Good condition
+GRN-2024-015,PO-2024-016,V-001,2024-04-10,Warehouse A,1,1000,Good condition
+GRN-2024-016,PO-2024-017,V-002,2024-04-13,Warehouse B,1,200,Good condition
+GRN-2024-017,PO-2024-019,V-019,2024-04-18,Mechanical Room,1,5,Installed on-site
+GRN-2024-018,PO-2024-020,V-020,2024-04-20,Warehouse C,1,500,Good condition
+GRN-2024-018,PO-2024-020,V-020,2024-04-20,Warehouse C,2,200,Good condition

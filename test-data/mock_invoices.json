@@ -1,0 +1,458 @@
+[
+  {
+    "id": "INV-TEST-001",
+    "scenario": "perfect_match",
+    "description": "Standard invoice matching PO-2024-001 exactly",
+    "invoice_number": "ACM-2024-1001",
+    "vendor_code": "V-001",
+    "vendor_name": "Acme Manufacturing Co.",
+    "invoice_date": "2024-02-20",
+    "due_date": "2024-03-22",
+    "currency": "USD",
+    "total_amount": 10750.00,
+    "tax_amount": 0,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-001",
+    "line_items": [
+      {"line": 1, "description": "Steel Bearings 6205-2RS", "quantity": 500, "unit_price": 12.50, "line_total": 6250.00},
+      {"line": 2, "description": "Steel Bearings 6206-2RS", "quantity": 300, "unit_price": 15.00, "line_total": 4500.00}
+    ],
+    "ocr_confidence": 0.96,
+    "field_confidences": {
+      "invoice_number": 0.99,
+      "vendor_name": 0.97,
+      "total_amount": 0.98,
+      "line_items": 0.94
+    }
+  },
+  {
+    "id": "INV-TEST-002",
+    "scenario": "amount_variance",
+    "description": "Invoice with price difference on line 1 (12.75 vs 12.50 on PO)",
+    "invoice_number": "ACM-2024-1015",
+    "vendor_code": "V-001",
+    "vendor_name": "Acme Manufacturing Co.",
+    "invoice_date": "2024-04-15",
+    "due_date": "2024-05-15",
+    "currency": "USD",
+    "total_amount": 12500.00,
+    "tax_amount": 0,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-016",
+    "line_items": [
+      {"line": 1, "description": "Steel Bearings 6205-2RS", "quantity": 1000, "unit_price": 12.75, "line_total": 12750.00}
+    ],
+    "ocr_confidence": 0.93,
+    "field_confidences": {
+      "invoice_number": 0.98,
+      "vendor_name": 0.95,
+      "total_amount": 0.97,
+      "line_items": 0.91
+    },
+    "expected_exception": "amount_variance",
+    "variance_amount": 500.00,
+    "variance_pct": 4.08
+  },
+  {
+    "id": "INV-TEST-003",
+    "scenario": "missing_po",
+    "description": "Invoice with no matching PO number",
+    "invoice_number": "GSS-2024-5500",
+    "vendor_code": "V-002",
+    "vendor_name": "Global Steel Supply Ltd.",
+    "invoice_date": "2024-03-01",
+    "due_date": "2024-04-15",
+    "currency": "USD",
+    "total_amount": 15400.00,
+    "tax_amount": 1232.00,
+    "freight_amount": 350.00,
+    "discount_amount": 0,
+    "po_number": null,
+    "line_items": [
+      {"line": 1, "description": "Galvanized Steel Tube 2x2x0.125", "quantity": 200, "unit_price": 68.50, "line_total": 13700.00}
+    ],
+    "ocr_confidence": 0.89,
+    "field_confidences": {
+      "invoice_number": 0.95,
+      "vendor_name": 0.92,
+      "total_amount": 0.88,
+      "line_items": 0.85
+    },
+    "expected_exception": "missing_po"
+  },
+  {
+    "id": "INV-TEST-004",
+    "scenario": "duplicate_invoice",
+    "description": "Duplicate of INV-TEST-001 (same invoice number from same vendor)",
+    "invoice_number": "ACM-2024-1001",
+    "vendor_code": "V-001",
+    "vendor_name": "Acme Manufacturing Co.",
+    "invoice_date": "2024-02-20",
+    "due_date": "2024-03-22",
+    "currency": "USD",
+    "total_amount": 10750.00,
+    "tax_amount": 0,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-001",
+    "line_items": [
+      {"line": 1, "description": "Steel Bearings 6205-2RS", "quantity": 500, "unit_price": 12.50, "line_total": 6250.00},
+      {"line": 2, "description": "Steel Bearings 6206-2RS", "quantity": 300, "unit_price": 15.00, "line_total": 4500.00}
+    ],
+    "ocr_confidence": 0.95,
+    "expected_exception": "duplicate_invoice"
+  },
+  {
+    "id": "INV-TEST-005",
+    "scenario": "quantity_variance",
+    "description": "Invoice claims 600 qty but PO only has 500 ordered",
+    "invoice_number": "GSS-2024-5501",
+    "vendor_code": "V-002",
+    "vendor_name": "Global Steel Supply Ltd.",
+    "invoice_date": "2024-02-25",
+    "due_date": "2024-04-10",
+    "currency": "USD",
+    "total_amount": 29400.00,
+    "tax_amount": 0,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-002",
+    "line_items": [
+      {"line": 1, "description": "Cold Rolled Steel Sheet 4x8", "quantity": 120, "unit_price": 245.00, "line_total": 29400.00}
+    ],
+    "ocr_confidence": 0.91,
+    "expected_exception": "quantity_variance"
+  },
+  {
+    "id": "INV-TEST-006",
+    "scenario": "partial_invoice",
+    "description": "Invoice for partial delivery of PO-2024-003 (first batch of 500 PCBs)",
+    "invoice_number": "TPI-2024-3301",
+    "vendor_code": "V-003",
+    "vendor_name": "TechParts International",
+    "invoice_date": "2024-03-05",
+    "due_date": "2024-03-15",
+    "currency": "USD",
+    "total_amount": 8875.00,
+    "tax_amount": 710.00,
+    "freight_amount": 0,
+    "discount_amount": 177.50,
+    "po_number": "PO-2024-003",
+    "line_items": [
+      {"line": 1, "description": "Circuit Board Assembly PCB-100", "quantity": 500, "unit_price": 8.75, "line_total": 4375.00},
+      {"line": 2, "description": "Microcontroller STM32F4", "quantity": 1000, "unit_price": 4.50, "line_total": 4500.00}
+    ],
+    "ocr_confidence": 0.94,
+    "field_confidences": {
+      "invoice_number": 0.98,
+      "vendor_name": 0.96,
+      "total_amount": 0.95,
+      "line_items": 0.92
+    }
+  },
+  {
+    "id": "INV-TEST-007",
+    "scenario": "perfect_match_with_tax",
+    "description": "Standard match with tax on chemicals order",
+    "invoice_number": "PCI-2024-8801",
+    "vendor_code": "V-004",
+    "vendor_name": "Pacific Chemicals Inc.",
+    "invoice_date": "2024-03-10",
+    "due_date": "2024-04-09",
+    "currency": "USD",
+    "total_amount": 14150.00,
+    "tax_amount": 1132.00,
+    "freight_amount": 268.00,
+    "discount_amount": 0,
+    "po_number": "PO-2024-004",
+    "line_items": [
+      {"line": 1, "description": "Industrial Solvent IPA 99%", "quantity": 200, "unit_price": 32.00, "line_total": 6400.00},
+      {"line": 2, "description": "Epoxy Resin System 2000", "quantity": 100, "unit_price": 67.50, "line_total": 6750.00}
+    ],
+    "ocr_confidence": 0.97
+  },
+  {
+    "id": "INV-TEST-008",
+    "scenario": "tax_variance",
+    "description": "Tax amount on invoice doesn't match expected calculation",
+    "invoice_number": "NPT-2024-7701",
+    "vendor_code": "V-006",
+    "vendor_name": "Nordic Precision Tools AB",
+    "invoice_date": "2024-03-15",
+    "due_date": "2024-04-14",
+    "currency": "USD",
+    "total_amount": 8200.00,
+    "tax_amount": 820.00,
+    "freight_amount": 150.00,
+    "discount_amount": 0,
+    "po_number": "PO-2024-006",
+    "line_items": [
+      {"line": 1, "description": "CNC End Mill 6mm Carbide", "quantity": 50, "unit_price": 89.00, "line_total": 4450.00},
+      {"line": 2, "description": "Precision Drill Bit Set", "quantity": 25, "unit_price": 124.00, "line_total": 3100.00}
+    ],
+    "ocr_confidence": 0.92,
+    "expected_exception": "tax_variance",
+    "notes": "Tax should be ~$604 (8% of subtotal $7550), but invoice shows $820"
+  },
+  {
+    "id": "INV-TEST-009",
+    "scenario": "perfect_match_service",
+    "description": "Service invoice matching freight PO",
+    "invoice_number": "SLL-2024-2201",
+    "vendor_code": "V-007",
+    "vendor_name": "Southern Logistics LLC",
+    "invoice_date": "2024-03-01",
+    "due_date": "2024-03-16",
+    "currency": "USD",
+    "total_amount": 2500.00,
+    "tax_amount": 0,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-007",
+    "line_items": [
+      {"line": 1, "description": "Freight Service - Detroit to Chicago", "quantity": 1, "unit_price": 2500.00, "line_total": 2500.00}
+    ],
+    "ocr_confidence": 0.98
+  },
+  {
+    "id": "INV-TEST-010",
+    "scenario": "perfect_match_packaging",
+    "description": "Standard match for packaging materials",
+    "invoice_number": "CPS-2024-4401",
+    "vendor_code": "V-008",
+    "vendor_name": "Central Packaging Solutions",
+    "invoice_date": "2024-03-20",
+    "due_date": "2024-04-19",
+    "currency": "USD",
+    "total_amount": 13450.00,
+    "tax_amount": 1076.00,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-008",
+    "line_items": [
+      {"line": 1, "description": "Corrugated Box 24x18x12", "quantity": 5000, "unit_price": 1.85, "line_total": 9250.00},
+      {"line": 2, "description": "Stretch Wrap Film 20-inch", "quantity": 100, "unit_price": 42.00, "line_total": 4200.00}
+    ],
+    "ocr_confidence": 0.95
+  },
+  {
+    "id": "INV-TEST-011",
+    "scenario": "vendor_on_hold",
+    "description": "Invoice from a vendor that is on hold",
+    "invoice_number": "FVI-2024-6601",
+    "vendor_code": "V-016",
+    "vendor_name": "Frozen Vendor Inc.",
+    "invoice_date": "2024-03-25",
+    "due_date": "2024-04-24",
+    "currency": "USD",
+    "total_amount": 5000.00,
+    "tax_amount": 400.00,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": null,
+    "line_items": [
+      {"line": 1, "description": "Cooling System Parts", "quantity": 10, "unit_price": 500.00, "line_total": 5000.00}
+    ],
+    "ocr_confidence": 0.90,
+    "expected_exception": "vendor_on_hold"
+  },
+  {
+    "id": "INV-TEST-012",
+    "scenario": "low_confidence_ocr",
+    "description": "Poorly scanned invoice with low OCR confidence",
+    "invoice_number": "MMM-2024-9901",
+    "vendor_code": "V-010",
+    "vendor_name": "Mountain Mining Materials",
+    "invoice_date": "2024-03-25",
+    "due_date": "2024-04-24",
+    "currency": "USD",
+    "total_amount": 7325.00,
+    "tax_amount": 586.00,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-010",
+    "line_items": [
+      {"line": 1, "description": "Aluminum Ingot 99.7%", "quantity": 1000, "unit_price": 2.85, "line_total": 2850.00},
+      {"line": 2, "description": "Copper Cathode Grade A", "quantity": 500, "unit_price": 8.95, "line_total": 4475.00}
+    ],
+    "ocr_confidence": 0.62,
+    "field_confidences": {
+      "invoice_number": 0.75,
+      "vendor_name": 0.58,
+      "total_amount": 0.65,
+      "line_items": 0.55
+    },
+    "notes": "Low OCR confidence - should flag for manual review"
+  },
+  {
+    "id": "INV-TEST-013",
+    "scenario": "credit_memo",
+    "description": "Credit memo for returned items",
+    "invoice_number": "CCI-2024-CM-001",
+    "vendor_code": "V-011",
+    "vendor_name": "Coastal Coatings Inc.",
+    "invoice_date": "2024-04-01",
+    "due_date": "2024-05-01",
+    "currency": "USD",
+    "total_amount": -1450.00,
+    "tax_amount": -116.00,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "document_type": "credit_memo",
+    "po_number": "PO-2024-011",
+    "line_items": [
+      {"line": 1, "description": "Powder Coat RAL 9005 Black - RETURNED DEFECTIVE", "quantity": -10, "unit_price": 145.00, "line_total": -1450.00}
+    ],
+    "ocr_confidence": 0.88
+  },
+  {
+    "id": "INV-TEST-014",
+    "scenario": "within_tolerance",
+    "description": "Invoice with small rounding difference (within 2% tolerance)",
+    "invoice_number": "DF-2024-3301",
+    "vendor_code": "V-013",
+    "vendor_name": "Delta Fasteners Corp.",
+    "invoice_date": "2024-04-10",
+    "due_date": "2024-05-10",
+    "currency": "USD",
+    "total_amount": 2310.00,
+    "tax_amount": 0,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-013",
+    "line_items": [
+      {"line": 1, "description": "Hex Bolt M10x40 Grade 8.8", "quantity": 10000, "unit_price": 0.15, "line_total": 1500.00},
+      {"line": 2, "description": "Lock Nut M10 Nylon Insert", "quantity": 10000, "unit_price": 0.08, "line_total": 800.00}
+    ],
+    "ocr_confidence": 0.96,
+    "notes": "Total is $2310 vs PO total $2300 - $10 difference (0.43%) should pass within tolerance"
+  },
+  {
+    "id": "INV-TEST-015",
+    "scenario": "multiple_grn_match",
+    "description": "Invoice covering two separate GRN deliveries for same PO",
+    "invoice_number": "TPI-2024-3302",
+    "vendor_code": "V-003",
+    "vendor_name": "TechParts International",
+    "invoice_date": "2024-03-20",
+    "due_date": "2024-03-30",
+    "currency": "USD",
+    "total_amount": 2625.00,
+    "tax_amount": 210.00,
+    "freight_amount": 0,
+    "discount_amount": 52.50,
+    "po_number": "PO-2024-003",
+    "line_items": [
+      {"line": 1, "description": "Circuit Board Assembly PCB-100", "quantity": 300, "unit_price": 8.75, "line_total": 2625.00}
+    ],
+    "ocr_confidence": 0.93,
+    "notes": "Second partial invoice for PO-2024-003 line 1 (300 of remaining 500 after first invoice)"
+  },
+  {
+    "id": "INV-TEST-016",
+    "scenario": "perfect_match_safety",
+    "description": "Standard match for safety equipment",
+    "invoice_number": "SSE-2024-4401",
+    "vendor_code": "V-014",
+    "vendor_name": "Summit Safety Equipment",
+    "invoice_date": "2024-04-08",
+    "due_date": "2024-05-08",
+    "currency": "USD",
+    "total_amount": 2300.00,
+    "tax_amount": 184.00,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-014",
+    "line_items": [
+      {"line": 1, "description": "Safety Glasses Z87.1", "quantity": 200, "unit_price": 8.50, "line_total": 1700.00},
+      {"line": 2, "description": "Nitrile Gloves XL Box/100", "quantity": 50, "unit_price": 12.00, "line_total": 600.00}
+    ],
+    "ocr_confidence": 0.97
+  },
+  {
+    "id": "INV-TEST-017",
+    "scenario": "large_amount_needs_vp",
+    "description": "High-value invoice requiring VP approval",
+    "invoice_number": "GSS-2024-5502",
+    "vendor_code": "V-002",
+    "vendor_name": "Global Steel Supply Ltd.",
+    "invoice_date": "2024-04-15",
+    "due_date": "2024-05-30",
+    "currency": "USD",
+    "total_amount": 77000.00,
+    "tax_amount": 6160.00,
+    "freight_amount": 1200.00,
+    "discount_amount": 0,
+    "po_number": "PO-2024-017",
+    "line_items": [
+      {"line": 1, "description": "Stainless Steel Sheet 316L", "quantity": 200, "unit_price": 385.00, "line_total": 77000.00}
+    ],
+    "ocr_confidence": 0.95,
+    "notes": "Amount > $50,000 — requires VP + CFO approval per approval matrix"
+  },
+  {
+    "id": "INV-TEST-018",
+    "scenario": "partial_delivery_match",
+    "description": "Invoice for partial delivery (75 of 100 hoses)",
+    "invoice_number": "HIS-2024-5501",
+    "vendor_code": "V-015",
+    "vendor_name": "Harbor Industrial Supplies",
+    "invoice_date": "2024-04-12",
+    "due_date": "2024-05-27",
+    "currency": "USD",
+    "total_amount": 3487.50,
+    "tax_amount": 279.00,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-015",
+    "line_items": [
+      {"line": 1, "description": "Hydraulic Hose 1/2 x 48", "quantity": 75, "unit_price": 28.50, "line_total": 2137.50},
+      {"line": 2, "description": "Quick Connect Fitting 1/2", "quantity": 200, "unit_price": 6.75, "line_total": 1350.00}
+    ],
+    "ocr_confidence": 0.94
+  },
+  {
+    "id": "INV-TEST-019",
+    "scenario": "perfect_match_heat_exchanger",
+    "description": "High-value capital equipment invoice",
+    "invoice_number": "DHE-2024-1901",
+    "vendor_code": "V-019",
+    "vendor_name": "Desert Heat Exchangers",
+    "invoice_date": "2024-04-20",
+    "due_date": "2024-05-20",
+    "currency": "USD",
+    "total_amount": 16000.00,
+    "tax_amount": 1280.00,
+    "freight_amount": 500.00,
+    "discount_amount": 0,
+    "po_number": "PO-2024-019",
+    "line_items": [
+      {"line": 1, "description": "Shell and Tube Heat Exchanger", "quantity": 5, "unit_price": 3200.00, "line_total": 16000.00}
+    ],
+    "ocr_confidence": 0.96
+  },
+  {
+    "id": "INV-TEST-020",
+    "scenario": "vendor_mismatch",
+    "description": "Invoice references PO from different vendor",
+    "invoice_number": "FPP-2024-2001",
+    "vendor_code": "V-020",
+    "vendor_name": "Forest Paper Products",
+    "invoice_date": "2024-04-25",
+    "due_date": "2024-05-25",
+    "currency": "USD",
+    "total_amount": 3900.00,
+    "tax_amount": 312.00,
+    "freight_amount": 0,
+    "discount_amount": 0,
+    "po_number": "PO-2024-008",
+    "line_items": [
+      {"line": 1, "description": "Corrugated Box 24x18x12", "quantity": 2000, "unit_price": 1.95, "line_total": 3900.00}
+    ],
+    "ocr_confidence": 0.91,
+    "expected_exception": "vendor_mismatch",
+    "notes": "PO-2024-008 belongs to V-008 (Central Packaging) but invoice is from V-020 (Forest Paper)"
+  }
+]

@@ -1,0 +1,21 @@
+vendor_code,name,tax_id,address,city,state,country,payment_terms_code,status,risk_level
+V-001,Acme Manufacturing Co.,12-3456789,100 Industrial Blvd,Detroit,MI,US,Net30,active,low
+V-002,Global Steel Supply Ltd.,23-4567890,200 Steel Way,Pittsburgh,PA,US,Net45,active,low
+V-003,TechParts International,34-5678901,300 Tech Park Dr,San Jose,CA,US,2%10-Net30,active,medium
+V-004,Pacific Chemicals Inc.,45-6789012,400 Chemical Rd,Houston,TX,US,Net30,active,low
+V-005,Eastern Electronics Corp.,56-7890123,500 Circuit Ave,Shenzhen,,CN,Net60,active,high
+V-006,Nordic Precision Tools AB,67-8901234,600 Precision Ln,Stockholm,,SE,Net30,active,low
+V-007,Southern Logistics LLC,78-9012345,700 Freight Blvd,Atlanta,GA,US,Net15,active,low
+V-008,Central Packaging Solutions,89-0123456,800 Pack St,Chicago,IL,US,Net30,active,low
+V-009,Western Rubber & Plastics,90-1234567,900 Polymer Dr,Akron,OH,US,Net45,active,medium
+V-010,Mountain Mining Materials,01-2345678,1000 Mining Rd,Denver,CO,US,Net30,active,low
+V-011,Coastal Coatings Inc.,11-3456789,1100 Paint Ave,Charlotte,NC,US,Net30,active,low
+V-012,Prairie Power Components,22-4567890,1200 Power Ln,Omaha,NE,US,2%10-Net30,active,low
+V-013,Delta Fasteners Corp.,33-5678901,1300 Bolt Blvd,Cleveland,OH,US,Net30,active,low
+V-014,Summit Safety Equipment,44-6789012,1400 Safety Dr,Milwaukee,WI,US,Net30,active,low
+V-015,Harbor Industrial Supplies,55-7890123,1500 Harbor Way,Long Beach,CA,US,Net45,active,medium
+V-016,Frozen Vendor Inc.,66-8901234,1600 Ice Rd,Anchorage,AK,US,Net30,on_hold,high
+V-017,Valley Automation Systems,77-9012345,1700 Auto Blvd,Phoenix,AZ,US,Net30,active,low
+V-018,Island Marine Parts,88-0123456,1800 Marine Dr,Honolulu,HI,US,Net60,active,medium
+V-019,Desert Heat Exchangers,99-1234567,1900 Heat Ln,Tucson,AZ,US,Net30,active,low
+V-020,Forest Paper Products,10-2345678,2000 Paper Mill Rd,Portland,OR,US,Net30,active,low
