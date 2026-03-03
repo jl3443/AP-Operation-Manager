@@ -11,7 +11,6 @@ import {
   Loader2,
   ArrowLeft,
   AlertCircle,
-  Sparkles,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -32,10 +31,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useUploadInvoiceFile, useExtractInvoice } from "@/hooks/use-invoices"
+import { useUploadInvoiceFile } from "@/hooks/use-invoices"
 import { useVendors } from "@/hooks/use-vendors"
 
-type FileStatus = "pending" | "uploading" | "uploaded" | "extracting" | "complete" | "error"
+type FileStatus = "pending" | "uploading" | "uploaded" | "error"
 
 interface UploadFile {
   id: string
@@ -56,7 +55,14 @@ export default function InvoiceUploadPage() {
 
   const { data: vendorsData, isLoading: vendorsLoading } = useVendors({ page_size: 100 })
   const uploadMutation = useUploadInvoiceFile()
-  const extractMutation = useExtractInvoice()
+
+  // Auto-redirect to pipeline as soon as first file is uploaded successfully
+  React.useEffect(() => {
+    const firstUploaded = files.find((f) => f.status === "uploaded" && f.invoiceId)
+    if (firstUploaded?.invoiceId) {
+      router.push(`/invoices/${firstUploaded.invoiceId}/pipeline`)
+    }
+  }, [files, router])
 
   const vendors = vendorsData?.items ?? []
 
@@ -104,29 +110,8 @@ export default function InvoiceUploadPage() {
 
     setFiles((prev) => [...prev, ...newFiles])
 
-    // Upload each file sequentially to avoid overwhelming the server
     for (const file of newFiles) {
       await uploadSingleFile(file)
-    }
-  }
-
-  async function handleExtract(uploadFile: UploadFile) {
-    if (!uploadFile.invoiceId) return
-
-    updateFile(uploadFile.id, { status: "extracting" })
-
-    try {
-      await extractMutation.mutateAsync(uploadFile.invoiceId)
-      updateFile(uploadFile.id, { status: "complete" })
-      toast.success(`Extraction complete for ${uploadFile.name}`)
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Extraction failed"
-      updateFile(uploadFile.id, {
-        status: "error",
-        errorMessage: message,
-      })
-      toast.error(`Extraction failed for ${uploadFile.name}`)
     }
   }
 
@@ -148,15 +133,8 @@ export default function InvoiceUploadPage() {
     return `${(bytes / 1048576).toFixed(1)} MB`
   }
 
-  const completedCount = files.filter((f) => f.status === "complete").length
-  const uploadedCount = files.filter(
-    (f) => f.status === "uploaded" || f.status === "complete",
-  ).length
-  const hasActiveUploads = files.some(
-    (f) => f.status === "uploading" || f.status === "extracting",
-  )
-  const allDone =
-    files.length > 0 && files.every((f) => f.status === "complete" || f.status === "error")
+  const uploadedCount = files.filter((f) => f.status === "uploaded").length
+  const hasActiveUploads = files.some((f) => f.status === "uploading")
 
   return (
     <div className="space-y-6">
@@ -269,7 +247,6 @@ export default function InvoiceUploadPage() {
               className="hidden"
               onChange={(e) => {
                 if (e.target.files) handleFiles(e.target.files)
-                // Reset input so the same file can be selected again
                 e.target.value = ""
               }}
             />
@@ -283,97 +260,63 @@ export default function InvoiceUploadPage() {
           <CardHeader>
             <CardTitle className="text-base">Upload Queue</CardTitle>
             <CardDescription>
-              {uploadedCount} of {files.length} files uploaded
-              {completedCount > 0 && ` \u00B7 ${completedCount} extracted`}
+              {uploadedCount} of {files.length} files uploaded — redirecting to pipeline automatically
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {files.map((file) => (
-              <div
-                key={file.id}
-                className="flex items-center gap-3 rounded-lg border p-3"
-              >
-                <div className="rounded-lg bg-primary/10 p-2">
-                  <FileText className="size-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium truncate">{file.name}</p>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-muted-foreground">
-                        {formatFileSize(file.size)}
-                      </span>
-                      {file.status === "complete" && (
-                        <CheckCircle className="size-4 text-green-600" />
-                      )}
-                      {(file.status === "uploading" || file.status === "extracting") && (
-                        <Loader2 className="size-4 text-primary animate-spin" />
-                      )}
-                      {file.status === "error" && (
-                        <AlertCircle className="size-4 text-destructive" />
-                      )}
-                      {file.status === "uploaded" && (
-                        <CheckCircle className="size-4 text-blue-600" />
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="size-6"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          removeFile(file.id)
-                        }}
-                        disabled={
-                          file.status === "uploading" ||
-                          file.status === "extracting"
-                        }
-                      >
-                        <X className="size-3" />
-                      </Button>
-                    </div>
+              <div key={file.id} className="rounded-lg border">
+                <div className="flex items-center gap-3 p-3">
+                  <div className="rounded-lg bg-primary/10 p-2">
+                    <FileText className="size-4 text-primary" />
                   </div>
-                  {/* Status Messages */}
-                  {file.status === "pending" && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Waiting to upload...
-                    </p>
-                  )}
-                  {file.status === "uploading" && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Uploading to server...
-                    </p>
-                  )}
-                  {file.status === "uploaded" && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-xs text-blue-600">
-                        Uploaded successfully
-                      </p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 px-2 text-xs"
-                        onClick={() => handleExtract(file)}
-                      >
-                        <Sparkles className="size-3 mr-1" />
-                        Extract Data
-                      </Button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium truncate">{file.name}</p>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground">
+                          {formatFileSize(file.size)}
+                        </span>
+                        {file.status === "uploading" && (
+                          <Loader2 className="size-4 text-primary animate-spin" />
+                        )}
+                        {file.status === "uploaded" && (
+                          <CheckCircle className="size-4 text-green-600" />
+                        )}
+                        {file.status === "error" && (
+                          <AlertCircle className="size-4 text-destructive" />
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-6"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeFile(file.id)
+                          }}
+                          disabled={file.status === "uploading"}
+                        >
+                          <X className="size-3" />
+                        </Button>
+                      </div>
                     </div>
-                  )}
-                  {file.status === "extracting" && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      AI extracting data...
-                    </p>
-                  )}
-                  {file.status === "complete" && (
-                    <p className="text-xs text-green-600 mt-1">
-                      Extraction complete
-                    </p>
-                  )}
-                  {file.status === "error" && (
-                    <p className="text-xs text-destructive mt-1">
-                      {file.errorMessage ?? "An error occurred"}
-                    </p>
-                  )}
+                    {file.status === "pending" && (
+                      <p className="text-xs text-muted-foreground mt-1">Waiting to upload...</p>
+                    )}
+                    {file.status === "uploading" && (
+                      <p className="text-xs text-muted-foreground mt-1">Uploading to server...</p>
+                    )}
+                    {file.status === "uploaded" && (
+                      <p className="text-xs text-green-600 mt-1">
+                        Uploaded — launching Agent Pipeline…
+                      </p>
+                    )}
+                    {file.status === "error" && (
+                      <p className="text-xs text-destructive mt-1">
+                        {file.errorMessage ?? "An error occurred"}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -391,31 +334,9 @@ export default function InvoiceUploadPage() {
           >
             Clear All
           </Button>
-          {files.some((f) => f.status === "uploaded") && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                const uploaded = files.filter((f) => f.status === "uploaded")
-                uploaded.forEach((f) => handleExtract(f))
-              }}
-              disabled={hasActiveUploads}
-            >
-              <Sparkles className="size-4" />
-              Extract All
-            </Button>
-          )}
-          {allDone && (
-            <Button
-              onClick={() => {
-                toast.success("Invoices uploaded and processed!")
-                router.push("/invoices")
-              }}
-            >
-              View Invoices
-            </Button>
-          )}
         </div>
       )}
     </div>
   )
 }
+
