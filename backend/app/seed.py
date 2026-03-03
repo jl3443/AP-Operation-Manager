@@ -1,4 +1,6 @@
-"""Seed the database with realistic demo data.
+"""Seed the database with realistic demo data from AP_Inputs.
+
+Uses real PO, GRN, and supplier data from the AP_Inputs business context.
 
 Run from the ``backend/`` directory::
 
@@ -118,16 +120,13 @@ def seed() -> None:
         db.flush()
         print("  Created global tolerance config")
 
-        # ── Vendors ────────────────────────────────────────────────────
+        # ── Vendors (from AP_Inputs suppliers) ────────────────────────
         vendor_defs = [
-            ("V-001", "Acme Corp", "New York", "NY", "Net30", VendorStatus.active, VendorRiskLevel.low),
-            ("V-002", "TechParts Ltd", "San Jose", "CA", "Net45", VendorStatus.active, VendorRiskLevel.low),
-            ("V-003", "Global Supply Co", "Chicago", "IL", "Net30", VendorStatus.active, VendorRiskLevel.medium),
-            ("V-004", "Steel Works Ltd", "Pittsburgh", "PA", "Net60", VendorStatus.active, VendorRiskLevel.high),
-            ("V-005", "Office Depot", "Boca Raton", "FL", "Net15", VendorStatus.active, VendorRiskLevel.low),
-            ("V-006", "CloudServ Inc", "Seattle", "WA", "Net30", VendorStatus.active, VendorRiskLevel.low),
-            ("V-007", "Metro Electric", "Denver", "CO", "Net30", VendorStatus.on_hold, VendorRiskLevel.medium),
-            ("V-008", "PackRight Inc", "Dallas", "TX", "Net45", VendorStatus.active, VendorRiskLevel.low),
+            ("SUP001", "SteelCore Industries Ltd.", "Chicago", "IL", "Net30", VendorStatus.active, VendorRiskLevel.low),
+            ("SUP002", "TechParts Global Inc.", "San Jose", "CA", "Net45", VendorStatus.active, VendorRiskLevel.low),
+            ("SUP003", "LogiTrans Freight Solutions", "Chicago", "IL", "Net30", VendorStatus.active, VendorRiskLevel.medium),
+            ("SUP004", "SafeGuard PPE & Safety", "Milwaukee", "WI", "Net30", VendorStatus.active, VendorRiskLevel.low),
+            ("SUP005", "MachPrecision Tools Corp.", "Detroit", "MI", "Net60", VendorStatus.active, VendorRiskLevel.medium),
         ]
         vendors: dict[str, Vendor] = {}
         for code, name, city, state, terms, st, risk in vendor_defs:
@@ -146,45 +145,70 @@ def seed() -> None:
         db.flush()
         print(f"  Created {len(vendors)} vendors")
 
-        # ── Purchase Orders ────────────────────────────────────────────
+        # ── Purchase Orders (from AP_Inputs PO_Data.csv) ──────────────
+        # Each tuple: (po_number, vendor_code, status, order_date, delivery_date,
+        #              lines: [(line_num, part_num, desc, qty, unit_price, line_total)])
         po_data = [
-            # (po_number, vendor_code, status, order_date, lines: [(desc, qty, price)])
-            ("PO-2024-001", "V-001", POStatus.fully_received, _days_ago(60), [
-                ("Industrial Bearings 6205-2RS", 100, Decimal("12.50")),
-                ("Lubricant - Synthetic 5L", 20, Decimal("45.00")),
-                ("Conveyor Belt Segment 2m", 10, Decimal("225.00")),
-            ]),
-            ("PO-2024-002", "V-002", POStatus.fully_received, _days_ago(45), [
-                ("Circuit Board PCB-A100", 200, Decimal("35.00")),
-                ("LED Panel 12V 50W", 50, Decimal("68.00")),
-            ]),
-            ("PO-2024-003", "V-003", POStatus.partially_received, _days_ago(30), [
-                ("Steel Pipe DN50 6m", 150, Decimal("42.00")),
-                ("Flange DN50 PN16", 300, Decimal("15.50")),
-                ("Gasket Set DN50", 300, Decimal("4.25")),
-            ]),
-            ("PO-2024-004", "V-005", POStatus.open, _days_ago(20), [
-                ("Copy Paper A4 Ream", 500, Decimal("8.99")),
-                ("Ink Cartridge Black HP", 30, Decimal("42.00")),
-            ]),
-            ("PO-2024-005", "V-004", POStatus.fully_received, _days_ago(55), [
-                ("Steel Plate 4x8 1/4in", 25, Decimal("310.00")),
-                ("Angle Iron 2x2 20ft", 40, Decimal("85.00")),
-                ("Welding Rod E7018 50lb", 10, Decimal("125.00")),
-                ("Cutting Disc 14in", 100, Decimal("6.50")),
-            ]),
+            ("PO-2025-001", "SUP001", POStatus.fully_received,
+             date(2025, 1, 5), date(2025, 1, 20), [
+                 (1, "SC-HR-4X8-11G", "Hot-Rolled Steel Sheet 4x8ft 11 Gauge", 200, Decimal("142.50"), Decimal("28500.00")),
+                 (2, "SC-HR-4X8-14G", "Hot-Rolled Steel Sheet 4x8ft 14 Gauge", 150, Decimal("110.00"), Decimal("16500.00")),
+             ]),
+            ("PO-2025-002", "SUP002", POStatus.fully_received,
+             date(2025, 1, 8), date(2025, 1, 25), [
+                 (1, "TP-SENS-PT100-A", "PT100 Temperature Sensor Type A", 50, Decimal("145.00"), Decimal("7250.00")),
+                 (2, "TP-CTRL-PLC-M3", "PLC Micro Controller Module M3", 10, Decimal("525.00"), Decimal("5250.00")),
+             ]),
+            ("PO-2025-003", "SUP003", POStatus.service_completed,
+             date(2025, 1, 10), date(2025, 1, 31), [
+                 (1, "LT-FRT-INBOUND-Q1", "Inbound Freight Services - January 2025", 1, Decimal("8200.00"), Decimal("8200.00")),
+             ]),
+            ("PO-2025-004", "SUP004", POStatus.fully_received,
+             date(2025, 1, 12), date(2025, 1, 28), [
+                 (1, "SG-HLM-ANSI-BLU", "ANSI Z89.1 Hard Hat Blue", 60, Decimal("28.00"), Decimal("1680.00")),
+                 (2, "SG-VEST-HI-VIS-L", "Hi-Vis Safety Vest Size Large", 80, Decimal("24.00"), Decimal("1920.00")),
+             ]),
+            ("PO-2025-005", "SUP005", POStatus.partially_received,
+             date(2025, 1, 15), date(2025, 2, 15), [
+                 (1, "MP-CNC-TURRET-T8", "CNC Turret Assembly T8 Series", 2, Decimal("18500.00"), Decimal("37000.00")),
+                 (2, "MP-CNC-SPINDLE-H", "CNC High-Speed Spindle Unit", 3, Decimal("9000.00"), Decimal("27000.00")),
+                 (3, "MP-CNC-CTRL-V4", "CNC Control Panel V4", 2, Decimal("7000.00"), Decimal("14000.00")),
+             ]),
+            ("PO-2025-006", "SUP001", POStatus.fully_received,
+             date(2025, 1, 18), date(2025, 2, 5), [
+                 (1, "SC-ROD-12MM-STD", "Steel Round Rod 12mm Standard Grade", 500, Decimal("28.00"), Decimal("14000.00")),
+                 (2, "SC-ROD-20MM-STD", "Steel Round Rod 20mm Standard Grade", 200, Decimal("40.00"), Decimal("8000.00")),
+             ]),
+            ("PO-2025-007", "SUP002", POStatus.fully_received,
+             date(2025, 1, 20), date(2025, 2, 10), [
+                 (1, "TP-PCB-MAIN-V7", "Main Circuit Board Assembly V7", 20, Decimal("875.00"), Decimal("17500.00")),
+                 (2, "TP-PCB-IO-V3", "I/O Expansion Board V3", 30, Decimal("450.00"), Decimal("13500.00")),
+             ]),
+            ("PO-2025-008", "SUP003", POStatus.service_completed,
+             date(2025, 1, 22), date(2025, 1, 28), [
+                 (1, "LT-FRT-EXPRESS-01", "Express Freight - Urgent Parts Delivery", 1, Decimal("4100.00"), Decimal("4100.00")),
+             ]),
+            ("PO-2025-009", "SUP004", POStatus.fully_received,
+             date(2025, 1, 25), date(2025, 2, 8), [
+                 (1, "SG-FEX-CO2-5KG", "CO2 Fire Extinguisher 5kg", 20, Decimal("140.00"), Decimal("2800.00")),
+             ]),
+            ("PO-2025-010", "SUP005", POStatus.fully_received,
+             date(2025, 1, 28), date(2025, 2, 12), [
+                 (1, "MP-DRILL-HSS-SET", "HSS Drill Bit Set 1-13mm (25pc)", 10, Decimal("285.00"), Decimal("2850.00")),
+                 (2, "MP-END-MILL-4F", "4-Flute End Mill Carbide 10mm", 30, Decimal("88.33"), Decimal("2650.00")),
+             ]),
         ]
 
         purchase_orders: dict[str, PurchaseOrder] = {}
-        po_lines_map: dict[str, list[POLineItem]] = {}  # po_number -> lines
+        po_lines_map: dict[str, list[POLineItem]] = {}
 
-        for po_number, v_code, po_status, order_dt, lines in po_data:
-            total = sum(qty * price for _, qty, price in lines)
+        for po_number, v_code, po_status, order_dt, delivery_dt, lines in po_data:
+            total = sum(lt for _, _, _, _, _, lt in lines)
             po = PurchaseOrder(
                 po_number=po_number,
                 vendor_id=vendors[v_code].id,
                 order_date=order_dt,
-                delivery_date=order_dt + timedelta(days=14),
+                delivery_date=delivery_dt,
                 currency="USD",
                 total_amount=total,
                 status=po_status,
@@ -193,14 +217,14 @@ def seed() -> None:
             db.flush()
 
             po_line_items = []
-            for idx, (desc, qty, price) in enumerate(lines, start=1):
+            for line_num, part_num, desc, qty, price, lt in lines:
                 pli = POLineItem(
                     po_id=po.id,
-                    line_number=idx,
+                    line_number=line_num,
                     description=desc,
                     quantity_ordered=Decimal(str(qty)),
                     unit_price=price,
-                    line_total=Decimal(str(qty)) * price,
+                    line_total=lt,
                     quantity_received=Decimal("0"),
                     quantity_invoiced=Decimal("0"),
                 )
@@ -213,69 +237,129 @@ def seed() -> None:
 
         print(f"  Created {len(purchase_orders)} purchase orders with line items")
 
-        # ── Goods Receipts ─────────────────────────────────────────────
-        # GRN for PO-001 (full receipt)
+        # ── Goods Receipts (from AP_Inputs GRN_Data.csv) ──────────────
+        # GRN-2025-001: PO-2025-001, SUP001, fully received
         grn1 = GoodsReceipt(
-            grn_number="GRN-2024-001",
-            po_id=purchase_orders["PO-2024-001"].id,
-            vendor_id=vendors["V-001"].id,
-            receipt_date=_days_ago(50),
-            warehouse="Warehouse A",
+            grn_number="GRN-2025-001", po_id=purchase_orders["PO-2025-001"].id,
+            vendor_id=vendors["SUP001"].id, receipt_date=date(2025, 1, 21), warehouse="WH-CHI-01",
         )
         db.add(grn1)
         db.flush()
-        for pli in po_lines_map["PO-2024-001"]:
-            db.add(GRNLineItem(
-                grn_id=grn1.id,
-                po_line_id=pli.id,
-                quantity_received=pli.quantity_ordered,
-            ))
+        for pli in po_lines_map["PO-2025-001"]:
+            db.add(GRNLineItem(grn_id=grn1.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="Full delivery received in good condition."))
             pli.quantity_received = pli.quantity_ordered
-        db.flush()
 
-        # GRN for PO-005 (full receipt)
+        # GRN-2025-002: PO-2025-002, SUP002, fully received
         grn2 = GoodsReceipt(
-            grn_number="GRN-2024-002",
-            po_id=purchase_orders["PO-2024-005"].id,
-            vendor_id=vendors["V-004"].id,
-            receipt_date=_days_ago(40),
-            warehouse="Warehouse B",
+            grn_number="GRN-2025-002", po_id=purchase_orders["PO-2025-002"].id,
+            vendor_id=vendors["SUP002"].id, receipt_date=date(2025, 1, 24), warehouse="WH-CHI-01",
         )
         db.add(grn2)
         db.flush()
-        for pli in po_lines_map["PO-2024-005"]:
-            db.add(GRNLineItem(
-                grn_id=grn2.id,
-                po_line_id=pli.id,
-                quantity_received=pli.quantity_ordered,
-            ))
+        for pli in po_lines_map["PO-2025-002"]:
+            db.add(GRNLineItem(grn_id=grn2.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="All components tested and accepted by QC team."))
             pli.quantity_received = pli.quantity_ordered
-        db.flush()
 
-        # GRN for PO-003 (partial receipt — 80%)
+        # GRN-2025-003: PO-2025-003, SUP003, service confirmed
         grn3 = GoodsReceipt(
-            grn_number="GRN-2024-003",
-            po_id=purchase_orders["PO-2024-003"].id,
-            vendor_id=vendors["V-003"].id,
-            receipt_date=_days_ago(20),
-            warehouse="Warehouse A",
+            grn_number="GRN-2025-003", po_id=purchase_orders["PO-2025-003"].id,
+            vendor_id=vendors["SUP003"].id, receipt_date=date(2025, 1, 31), warehouse=None,
         )
         db.add(grn3)
         db.flush()
-        for pli in po_lines_map["PO-2024-003"]:
-            partial_qty = (pli.quantity_ordered * Decimal("0.8")).quantize(Decimal("0.01"))
-            db.add(GRNLineItem(
-                grn_id=grn3.id,
-                po_line_id=pli.id,
-                quantity_received=partial_qty,
-            ))
-            pli.quantity_received = partial_qty
+        for pli in po_lines_map["PO-2025-003"]:
+            db.add(GRNLineItem(grn_id=grn3.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="Service completion confirmed by SCM department."))
+            pli.quantity_received = pli.quantity_ordered
+
+        # GRN-2025-004: PO-2025-004, SUP004, fully received
+        grn4 = GoodsReceipt(
+            grn_number="GRN-2025-004", po_id=purchase_orders["PO-2025-004"].id,
+            vendor_id=vendors["SUP004"].id, receipt_date=date(2025, 1, 27), warehouse="WH-CHI-02",
+        )
+        db.add(grn4)
         db.flush()
+        for pli in po_lines_map["PO-2025-004"]:
+            db.add(GRNLineItem(grn_id=grn4.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="All PPE items received and distributed to EHS store."))
+            pli.quantity_received = pli.quantity_ordered
 
-        grn_ids = [grn1.id, grn2.id, grn3.id]
-        print(f"  Created {len(grn_ids)} goods receipts with line items")
+        # GRN-2025-005: PO-2025-005, SUP005, partially received (turrets + 2/3 spindles)
+        grn5 = GoodsReceipt(
+            grn_number="GRN-2025-005", po_id=purchase_orders["PO-2025-005"].id,
+            vendor_id=vendors["SUP005"].id, receipt_date=date(2025, 2, 10), warehouse="WH-CHI-01",
+        )
+        db.add(grn5)
+        db.flush()
+        po5_lines = po_lines_map["PO-2025-005"]
+        # Line 1: 2 turrets received (full)
+        db.add(GRNLineItem(grn_id=grn5.id, po_line_id=po5_lines[0].id, quantity_received=Decimal("2"), condition_notes="PARTIAL RECEIPT: Turrets received."))
+        po5_lines[0].quantity_received = Decimal("2")
+        # Line 2: 2 of 3 spindles received
+        db.add(GRNLineItem(grn_id=grn5.id, po_line_id=po5_lines[1].id, quantity_received=Decimal("2"), condition_notes="PARTIAL: 2 of 3 spindles received."))
+        po5_lines[1].quantity_received = Decimal("2")
+        # Line 3: 0 control panels received yet
+        db.add(GRNLineItem(grn_id=grn5.id, po_line_id=po5_lines[2].id, quantity_received=Decimal("0"), condition_notes="Not yet shipped — supplier confirmed delivery Feb 28"))
+        po5_lines[2].quantity_received = Decimal("0")
 
-        # ── Invoices ───────────────────────────────────────────────────
+        # GRN-2025-006: PO-2025-006, SUP001, fully received
+        grn6 = GoodsReceipt(
+            grn_number="GRN-2025-006", po_id=purchase_orders["PO-2025-006"].id,
+            vendor_id=vendors["SUP001"].id, receipt_date=date(2025, 2, 4), warehouse="WH-CHI-01",
+        )
+        db.add(grn6)
+        db.flush()
+        for pli in po_lines_map["PO-2025-006"]:
+            db.add(GRNLineItem(grn_id=grn6.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="Full delivery received."))
+            pli.quantity_received = pli.quantity_ordered
+
+        # GRN-2025-007: PO-2025-007, SUP002, fully received
+        grn7 = GoodsReceipt(
+            grn_number="GRN-2025-007", po_id=purchase_orders["PO-2025-007"].id,
+            vendor_id=vendors["SUP002"].id, receipt_date=date(2025, 2, 9), warehouse="WH-CHI-01",
+        )
+        db.add(grn7)
+        db.flush()
+        for pli in po_lines_map["PO-2025-007"]:
+            db.add(GRNLineItem(grn_id=grn7.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="All boards received. QC testing passed."))
+            pli.quantity_received = pli.quantity_ordered
+
+        # GRN-2025-008: PO-2025-008, SUP003, service confirmed
+        grn8 = GoodsReceipt(
+            grn_number="GRN-2025-008", po_id=purchase_orders["PO-2025-008"].id,
+            vendor_id=vendors["SUP003"].id, receipt_date=date(2025, 1, 28), warehouse=None,
+        )
+        db.add(grn8)
+        db.flush()
+        for pli in po_lines_map["PO-2025-008"]:
+            db.add(GRNLineItem(grn_id=grn8.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="Express freight service completed on time."))
+            pli.quantity_received = pli.quantity_ordered
+
+        # GRN-2025-009: PO-2025-009, SUP004, fully received
+        grn9 = GoodsReceipt(
+            grn_number="GRN-2025-009", po_id=purchase_orders["PO-2025-009"].id,
+            vendor_id=vendors["SUP004"].id, receipt_date=date(2025, 2, 7), warehouse="WH-CHI-02",
+        )
+        db.add(grn9)
+        db.flush()
+        for pli in po_lines_map["PO-2025-009"]:
+            db.add(GRNLineItem(grn_id=grn9.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="All extinguishers received with valid certification."))
+            pli.quantity_received = pli.quantity_ordered
+
+        # GRN-2025-010: PO-2025-010, SUP005, fully received
+        grn10 = GoodsReceipt(
+            grn_number="GRN-2025-010", po_id=purchase_orders["PO-2025-010"].id,
+            vendor_id=vendors["SUP005"].id, receipt_date=date(2025, 2, 11), warehouse="WH-CHI-01",
+        )
+        db.add(grn10)
+        db.flush()
+        for pli in po_lines_map["PO-2025-010"]:
+            db.add(GRNLineItem(grn_id=grn10.id, po_line_id=pli.id, quantity_received=pli.quantity_ordered, condition_notes="All cutting tools received and passed inspection."))
+            pli.quantity_received = pli.quantity_ordered
+
+        db.flush()
+        all_grns = [grn1, grn2, grn3, grn4, grn5, grn6, grn7, grn8, grn9, grn10]
+        print(f"  Created {len(all_grns)} goods receipts with line items")
+
+        # ── Invoices (realistic scenarios tied to AP_Inputs data) ─────
         # Helper to create invoice line items linked to PO lines
         def _make_inv_lines(
             invoice_id: uuid.UUID,
@@ -296,6 +380,7 @@ def seed() -> None:
                     unit_price=price,
                     line_total=qty * price,
                     po_line_id=pli.id,
+                    gl_account_code="5100-00",
                     tax_amount=Decimal("0"),
                 )
                 db.add(ili)
@@ -304,423 +389,593 @@ def seed() -> None:
 
         invoices: list[Invoice] = []
 
-        # --- 3 draft invoices ---
-        for i, (v_code, num) in enumerate([("V-006", "INV-D-001"), ("V-008", "INV-D-002"), ("V-007", "INV-D-003")]):
-            inv = Invoice(
-                invoice_number=num,
-                vendor_id=vendors[v_code].id,
-                invoice_date=_days_ago(5 + i),
-                due_date=_days_ago(5 + i) + timedelta(days=30),
-                received_date=_days_ago(5 + i),
-                currency="USD",
-                total_amount=Decimal("1500.00") + Decimal(str(i * 500)),
-                tax_amount=Decimal("0"),
-                freight_amount=Decimal("0"),
-                discount_amount=Decimal("0"),
-                status=InvoiceStatus.draft,
-                source_channel=SourceChannel.manual,
-            )
-            db.add(inv)
-            db.flush()
-            # Draft invoices: no PO link, standalone line items
-            db.add(InvoiceLineItem(
-                invoice_id=inv.id, line_number=1, description="General Services",
-                quantity=Decimal("1"), unit_price=inv.total_amount, line_total=inv.total_amount,
-                tax_amount=Decimal("0"),
-            ))
-            invoices.append(inv)
-
-        # --- 2 extracted invoices ---
-        for i, (v_code, num) in enumerate([("V-005", "INV-E-001"), ("V-002", "INV-E-002")]):
-            inv = Invoice(
-                invoice_number=num,
-                vendor_id=vendors[v_code].id,
-                invoice_date=_days_ago(8 + i),
-                due_date=_days_ago(8 + i) + timedelta(days=30),
-                received_date=_days_ago(8 + i),
-                currency="USD",
-                total_amount=Decimal("3200.00") + Decimal(str(i * 800)),
-                tax_amount=Decimal("250.00"),
-                status=InvoiceStatus.extracted,
-                ocr_confidence_score=0.92 - (i * 0.05),
-                source_channel=SourceChannel.email,
-            )
-            db.add(inv)
-            db.flush()
-            db.add(InvoiceLineItem(
-                invoice_id=inv.id, line_number=1, description="Office Supplies Batch",
-                quantity=Decimal("10"), unit_price=Decimal("320.00"),
-                line_total=Decimal("3200.00"), tax_amount=Decimal("250.00"),
-                ai_gl_prediction="6100-00", ai_confidence=0.88,
-            ))
-            invoices.append(inv)
-
-        # --- 2 matching invoices ---
-        for i, (v_code, num) in enumerate([("V-003", "INV-M-001"), ("V-001", "INV-M-002")]):
-            inv = Invoice(
-                invoice_number=num,
-                vendor_id=vendors[v_code].id,
-                invoice_date=_days_ago(12 + i),
-                due_date=_days_ago(12 + i) + timedelta(days=45),
-                currency="USD",
-                total_amount=Decimal("5600.00") + Decimal(str(i * 1200)),
-                status=InvoiceStatus.matching,
-                source_channel=SourceChannel.manual,
-            )
-            db.add(inv)
-            db.flush()
-            db.add(InvoiceLineItem(
-                invoice_id=inv.id, line_number=1, description="Raw Materials",
-                quantity=Decimal("50"), unit_price=Decimal("112.00"),
-                line_total=Decimal("5600.00"), tax_amount=Decimal("0"),
-            ))
-            invoices.append(inv)
-
-        # --- 3 exception invoices (linked to POs) ---
-        # Exception invoice 1: linked to PO-001, amount variance
-        inv_exc1 = Invoice(
-            invoice_number="INV-X-001",
-            vendor_id=vendors["V-001"].id,
-            invoice_date=_days_ago(18),
-            due_date=_days_ago(18) + timedelta(days=30),
+        # --- POSTED: SteelCore invoice for PO-2025-001 (fully matched, processed) ---
+        inv_posted_1 = Invoice(
+            invoice_number="SC-INV-2025-0089",
+            vendor_id=vendors["SUP001"].id,
+            invoice_date=date(2025, 1, 25),
+            due_date=date(2025, 2, 24),
+            received_date=date(2025, 1, 26),
             currency="USD",
-            total_amount=Decimal("5200.00"),
-            status=InvoiceStatus.exception,
-            source_channel=SourceChannel.email,
-        )
-        db.add(inv_exc1)
-        db.flush()
-        _make_inv_lines(inv_exc1.id, "PO-2024-001", price_multiplier=1.08)  # 8% over PO price
-        invoices.append(inv_exc1)
-
-        # Exception invoice 2: missing PO
-        inv_exc2 = Invoice(
-            invoice_number="INV-X-002",
-            vendor_id=vendors["V-003"].id,
-            invoice_date=_days_ago(15),
-            due_date=_days_ago(15) + timedelta(days=30),
-            currency="USD",
-            total_amount=Decimal("2800.00"),
-            status=InvoiceStatus.exception,
-            source_channel=SourceChannel.manual,
-        )
-        db.add(inv_exc2)
-        db.flush()
-        db.add(InvoiceLineItem(
-            invoice_id=inv_exc2.id, line_number=1, description="Consulting Services",
-            quantity=Decimal("1"), unit_price=Decimal("2800.00"), line_total=Decimal("2800.00"),
+            total_amount=Decimal("45000.00"),
             tax_amount=Decimal("0"),
-        ))
-        invoices.append(inv_exc2)
-
-        # Exception invoice 3: linked to PO-003, qty variance (invoiced > received due to partial GRN)
-        inv_exc3 = Invoice(
-            invoice_number="INV-X-003",
-            vendor_id=vendors["V-003"].id,
-            invoice_date=_days_ago(10),
-            due_date=_days_ago(10) + timedelta(days=30),
-            currency="USD",
-            total_amount=Decimal("12250.00"),
-            status=InvoiceStatus.exception,
-            source_channel=SourceChannel.email,
-        )
-        db.add(inv_exc3)
-        db.flush()
-        _make_inv_lines(inv_exc3.id, "PO-2024-003")  # Full qty but only 80% received
-        invoices.append(inv_exc3)
-
-        db.flush()
-
-        # --- 2 pending_approval invoices (linked to POs, matched) ---
-        inv_pa1 = Invoice(
-            invoice_number="INV-A-001",
-            vendor_id=vendors["V-002"].id,
-            invoice_date=_days_ago(14),
-            due_date=_days_ago(14) + timedelta(days=45),
-            currency="USD",
-            total_amount=Decimal("10400.00"),
-            status=InvoiceStatus.pending_approval,
-            source_channel=SourceChannel.email,
-        )
-        db.add(inv_pa1)
-        db.flush()
-        _make_inv_lines(inv_pa1.id, "PO-2024-002")
-        invoices.append(inv_pa1)
-
-        inv_pa2 = Invoice(
-            invoice_number="INV-A-002",
-            vendor_id=vendors["V-004"].id,
-            invoice_date=_days_ago(12),
-            due_date=_days_ago(12) + timedelta(days=60),
-            currency="USD",
-            total_amount=Decimal("12600.00"),
-            status=InvoiceStatus.pending_approval,
-            source_channel=SourceChannel.manual,
-        )
-        db.add(inv_pa2)
-        db.flush()
-        _make_inv_lines(inv_pa2.id, "PO-2024-005")
-        invoices.append(inv_pa2)
-
-        # --- 2 approved invoices ---
-        inv_ap1 = Invoice(
-            invoice_number="INV-P-001",
-            vendor_id=vendors["V-001"].id,
-            invoice_date=_days_ago(25),
-            due_date=_days_ago(25) + timedelta(days=30),
-            currency="USD",
-            total_amount=Decimal("4150.00"),
-            status=InvoiceStatus.approved,
-            source_channel=SourceChannel.email,
-        )
-        db.add(inv_ap1)
-        db.flush()
-        _make_inv_lines(inv_ap1.id, "PO-2024-001")
-        invoices.append(inv_ap1)
-
-        inv_ap2 = Invoice(
-            invoice_number="INV-P-002",
-            vendor_id=vendors["V-005"].id,
-            invoice_date=_days_ago(22),
-            due_date=_days_ago(22) + timedelta(days=15),
-            currency="USD",
-            total_amount=Decimal("5755.00"),
-            status=InvoiceStatus.approved,
-            source_channel=SourceChannel.manual,
-        )
-        db.add(inv_ap2)
-        db.flush()
-        _make_inv_lines(inv_ap2.id, "PO-2024-004")
-        invoices.append(inv_ap2)
-
-        # --- 1 posted invoice ---
-        inv_posted = Invoice(
-            invoice_number="INV-Z-001",
-            vendor_id=vendors["V-002"].id,
-            invoice_date=_days_ago(35),
-            due_date=_days_ago(35) + timedelta(days=45),
-            currency="USD",
-            total_amount=Decimal("10400.00"),
             status=InvoiceStatus.posted,
             source_channel=SourceChannel.email,
+            ocr_confidence_score=0.96,
         )
-        db.add(inv_posted)
+        db.add(inv_posted_1)
         db.flush()
-        _make_inv_lines(inv_posted.id, "PO-2024-002")
-        invoices.append(inv_posted)
+        _make_inv_lines(inv_posted_1.id, "PO-2025-001")
+        invoices.append(inv_posted_1)
+
+        # --- POSTED: TechParts invoice for PO-2025-002 (fully matched, processed) ---
+        inv_posted_2 = Invoice(
+            invoice_number="TP-2025-INV-00341",
+            vendor_id=vendors["SUP002"].id,
+            invoice_date=date(2025, 1, 28),
+            due_date=date(2025, 3, 14),
+            received_date=date(2025, 1, 29),
+            currency="USD",
+            total_amount=Decimal("12500.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.posted,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.94,
+        )
+        db.add(inv_posted_2)
+        db.flush()
+        _make_inv_lines(inv_posted_2.id, "PO-2025-002")
+        invoices.append(inv_posted_2)
+
+        # --- APPROVED: LogiTrans freight invoice for PO-2025-003 ---
+        inv_approved_1 = Invoice(
+            invoice_number="LT-25-INV-00567",
+            vendor_id=vendors["SUP003"].id,
+            invoice_date=date(2025, 2, 5),
+            due_date=date(2025, 3, 7),
+            received_date=date(2025, 2, 6),
+            currency="USD",
+            total_amount=Decimal("8200.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.approved,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.91,
+        )
+        db.add(inv_approved_1)
+        db.flush()
+        _make_inv_lines(inv_approved_1.id, "PO-2025-003")
+        invoices.append(inv_approved_1)
+
+        # --- APPROVED: SafeGuard PPE invoice for PO-2025-004 ---
+        inv_approved_2 = Invoice(
+            invoice_number="SG-INV-2025-0044",
+            vendor_id=vendors["SUP004"].id,
+            invoice_date=date(2025, 2, 1),
+            due_date=date(2025, 3, 3),
+            received_date=date(2025, 2, 2),
+            currency="USD",
+            total_amount=Decimal("3600.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.approved,
+            source_channel=SourceChannel.manual,
+        )
+        db.add(inv_approved_2)
+        db.flush()
+        _make_inv_lines(inv_approved_2.id, "PO-2025-004")
+        invoices.append(inv_approved_2)
+
+        # --- PENDING_APPROVAL: SteelCore rod invoice for PO-2025-006 ---
+        inv_pending_1 = Invoice(
+            invoice_number="SC-INV-2025-0112",
+            vendor_id=vendors["SUP001"].id,
+            invoice_date=date(2025, 2, 8),
+            due_date=date(2025, 3, 10),
+            received_date=date(2025, 2, 9),
+            currency="USD",
+            total_amount=Decimal("22000.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.pending_approval,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.95,
+        )
+        db.add(inv_pending_1)
+        db.flush()
+        _make_inv_lines(inv_pending_1.id, "PO-2025-006")
+        invoices.append(inv_pending_1)
+
+        # --- PENDING_APPROVAL: TechParts circuit board invoice for PO-2025-007 ---
+        inv_pending_2 = Invoice(
+            invoice_number="TP-2025-INV-00398",
+            vendor_id=vendors["SUP002"].id,
+            invoice_date=date(2025, 2, 12),
+            due_date=date(2025, 3, 29),
+            received_date=date(2025, 2, 13),
+            currency="USD",
+            total_amount=Decimal("31000.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.pending_approval,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.93,
+        )
+        db.add(inv_pending_2)
+        db.flush()
+        _make_inv_lines(inv_pending_2.id, "PO-2025-007")
+        invoices.append(inv_pending_2)
+
+        # --- EXCEPTION: MachPrecision CNC invoice for PO-2025-005 (qty variance — partial GRN) ---
+        inv_exc_1 = Invoice(
+            invoice_number="MP-INV-2025-00231",
+            vendor_id=vendors["SUP005"].id,
+            invoice_date=date(2025, 2, 15),
+            due_date=date(2025, 4, 16),
+            received_date=date(2025, 2, 16),
+            currency="USD",
+            total_amount=Decimal("78000.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.exception,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.89,
+        )
+        db.add(inv_exc_1)
+        db.flush()
+        _make_inv_lines(inv_exc_1.id, "PO-2025-005")  # Full qty but only partial GRN
+        invoices.append(inv_exc_1)
+
+        # --- EXCEPTION: MachPrecision tools invoice with price variance for PO-2025-010 ---
+        inv_exc_2 = Invoice(
+            invoice_number="MP-INV-2025-00245",
+            vendor_id=vendors["SUP005"].id,
+            invoice_date=date(2025, 2, 18),
+            due_date=date(2025, 4, 19),
+            received_date=date(2025, 2, 19),
+            currency="USD",
+            total_amount=Decimal("5885.00"),  # ~7% over PO total of 5500
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.exception,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.92,
+        )
+        db.add(inv_exc_2)
+        db.flush()
+        _make_inv_lines(inv_exc_2.id, "PO-2025-010", price_multiplier=1.07)
+        invoices.append(inv_exc_2)
+
+        # --- EXCEPTION: Duplicate of TP-2025-INV-00341 ---
+        inv_exc_dup = Invoice(
+            invoice_number="TP-2025-INV-00341",  # Same number!
+            vendor_id=vendors["SUP002"].id,
+            invoice_date=date(2025, 1, 28),
+            due_date=date(2025, 3, 14),
+            received_date=date(2025, 2, 20),
+            currency="USD",
+            total_amount=Decimal("12500.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.exception,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.88,
+        )
+        db.add(inv_exc_dup)
+        db.flush()
+        _make_inv_lines(inv_exc_dup.id, "PO-2025-002")
+        invoices.append(inv_exc_dup)
+
+        # --- EXCEPTION: Unknown vendor invoice (no PO match) ---
+        # Apex Chemicals is not in our vendor master
+        apex_vendor = Vendor(
+            vendor_code="ACI-EXT",
+            name="Apex Chemicals International",
+            city="Houston",
+            state="TX",
+            country="US",
+            payment_terms_code="Net30",
+            status=VendorStatus.active,
+            risk_level=VendorRiskLevel.high,
+        )
+        db.add(apex_vendor)
+        db.flush()
+
+        inv_exc_nopo = Invoice(
+            invoice_number="ACI-2025-00001",
+            vendor_id=apex_vendor.id,
+            invoice_date=date(2025, 2, 10),
+            due_date=date(2025, 3, 12),
+            received_date=date(2025, 2, 11),
+            currency="USD",
+            total_amount=Decimal("4750.00"),
+            tax_amount=Decimal("237.50"),
+            status=InvoiceStatus.exception,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.85,
+        )
+        db.add(inv_exc_nopo)
+        db.flush()
+        db.add(InvoiceLineItem(
+            invoice_id=inv_exc_nopo.id, line_number=1,
+            description="Industrial Solvent - Acetone Grade A (200L Drum)",
+            quantity=Decimal("5"), unit_price=Decimal("950.00"), line_total=Decimal("4750.00"),
+            tax_amount=Decimal("237.50"),
+        ))
+        invoices.append(inv_exc_nopo)
+
+        # --- MATCHING: SafeGuard fire extinguisher invoice for PO-2025-009 ---
+        inv_matching = Invoice(
+            invoice_number="SG-INV-2025-0058",
+            vendor_id=vendors["SUP004"].id,
+            invoice_date=date(2025, 2, 12),
+            due_date=date(2025, 3, 14),
+            received_date=date(2025, 2, 13),
+            currency="USD",
+            total_amount=Decimal("2800.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.matching,
+            source_channel=SourceChannel.manual,
+        )
+        db.add(inv_matching)
+        db.flush()
+        _make_inv_lines(inv_matching.id, "PO-2025-009")
+        invoices.append(inv_matching)
+
+        # --- EXTRACTED: LogiTrans express freight for PO-2025-008 ---
+        inv_extracted = Invoice(
+            invoice_number="LT-25-INV-00589",
+            vendor_id=vendors["SUP003"].id,
+            invoice_date=date(2025, 2, 1),
+            due_date=date(2025, 3, 3),
+            received_date=date(2025, 2, 14),
+            currency="USD",
+            total_amount=Decimal("4100.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.extracted,
+            source_channel=SourceChannel.email,
+            ocr_confidence_score=0.93,
+        )
+        db.add(inv_extracted)
+        db.flush()
+        db.add(InvoiceLineItem(
+            invoice_id=inv_extracted.id, line_number=1,
+            description="Express Freight - Urgent Parts Delivery",
+            quantity=Decimal("1"), unit_price=Decimal("4100.00"), line_total=Decimal("4100.00"),
+            tax_amount=Decimal("0"), ai_gl_prediction="6100-00", ai_confidence=0.91,
+        ))
+        invoices.append(inv_extracted)
+
+        # --- DRAFT: MachPrecision supplemental tools (just uploaded, not yet OCR'd) ---
+        inv_draft_1 = Invoice(
+            invoice_number="MP-INV-2025-00260",
+            vendor_id=vendors["SUP005"].id,
+            invoice_date=date(2025, 2, 20),
+            due_date=date(2025, 4, 21),
+            received_date=date(2025, 2, 21),
+            currency="USD",
+            total_amount=Decimal("3200.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.draft,
+            source_channel=SourceChannel.manual,
+        )
+        db.add(inv_draft_1)
+        db.flush()
+        db.add(InvoiceLineItem(
+            invoice_id=inv_draft_1.id, line_number=1,
+            description="Precision Tooling - Custom Order",
+            quantity=Decimal("1"), unit_price=Decimal("3200.00"), line_total=Decimal("3200.00"),
+            tax_amount=Decimal("0"),
+        ))
+        invoices.append(inv_draft_1)
+
+        # --- DRAFT: SteelCore supplemental order ---
+        inv_draft_2 = Invoice(
+            invoice_number="SC-INV-2025-0128",
+            vendor_id=vendors["SUP001"].id,
+            invoice_date=date(2025, 2, 22),
+            due_date=date(2025, 3, 24),
+            received_date=date(2025, 2, 23),
+            currency="USD",
+            total_amount=Decimal("8500.00"),
+            tax_amount=Decimal("0"),
+            status=InvoiceStatus.draft,
+            source_channel=SourceChannel.email,
+        )
+        db.add(inv_draft_2)
+        db.flush()
+        db.add(InvoiceLineItem(
+            invoice_id=inv_draft_2.id, line_number=1,
+            description="Steel Plate Special Cut",
+            quantity=Decimal("10"), unit_price=Decimal("850.00"), line_total=Decimal("8500.00"),
+            tax_amount=Decimal("0"),
+        ))
+        invoices.append(inv_draft_2)
 
         db.flush()
         print(f"  Created {len(invoices)} invoices with line items")
 
         # ── Match Results ──────────────────────────────────────────────
-        # Exception invoice 1 — 2-way partial match (amount variance)
+        # Posted invoice 1 — 3-way matched (PO-001 has GRN-001)
         db.add(MatchResult(
-            invoice_id=inv_exc1.id,
-            match_type=MatchType.two_way,
-            match_status=MatchStatus.partial,
-            overall_score=33.3,
-            details={"lines": [{"line": 1, "status": "amount_variance"}]},
-            matched_po_id=purchase_orders["PO-2024-001"].id,
-            tolerance_applied=True,
-            tolerance_config_id=tol.id,
-        ))
-
-        # Exception invoice 2 — unmatched (missing PO)
-        db.add(MatchResult(
-            invoice_id=inv_exc2.id,
-            match_type=MatchType.two_way,
-            match_status=MatchStatus.unmatched,
-            overall_score=0.0,
-            details={"reason": "No PO references on invoice line items"},
-            tolerance_applied=False,
-        ))
-
-        # Exception invoice 3 — 3-way partial (qty variance vs GRN)
-        db.add(MatchResult(
-            invoice_id=inv_exc3.id,
+            invoice_id=inv_posted_1.id,
             match_type=MatchType.three_way,
-            match_status=MatchStatus.partial,
-            overall_score=66.7,
-            details={"lines": [{"line": 1, "status": "partial_delivery_overrun"}]},
-            matched_po_id=purchase_orders["PO-2024-003"].id,
-            matched_grn_ids=[str(grn3.id)],
-            tolerance_applied=True,
-            tolerance_config_id=tol.id,
-        ))
-
-        # Pending-approval invoice 1 — 2-way matched
-        db.add(MatchResult(
-            invoice_id=inv_pa1.id,
-            match_type=MatchType.two_way,
             match_status=MatchStatus.matched,
             overall_score=100.0,
             details={"lines": [{"line": 1, "status": "matched"}, {"line": 2, "status": "matched"}]},
-            matched_po_id=purchase_orders["PO-2024-002"].id,
-            tolerance_applied=True,
-            tolerance_config_id=tol.id,
-        ))
-
-        # Pending-approval invoice 2 — 3-way matched (PO-005 has GRN)
-        db.add(MatchResult(
-            invoice_id=inv_pa2.id,
-            match_type=MatchType.three_way,
-            match_status=MatchStatus.tolerance_passed,
-            overall_score=100.0,
-            details={"lines": [{"line": i, "status": "matched"} for i in range(1, 5)]},
-            matched_po_id=purchase_orders["PO-2024-005"].id,
-            matched_grn_ids=[str(grn2.id)],
-            tolerance_applied=True,
-            tolerance_config_id=tol.id,
-        ))
-
-        # Approved invoice 1 — 3-way matched (PO-001 has GRN)
-        db.add(MatchResult(
-            invoice_id=inv_ap1.id,
-            match_type=MatchType.three_way,
-            match_status=MatchStatus.tolerance_passed,
-            overall_score=100.0,
-            details={"lines": [{"line": i, "status": "matched"} for i in range(1, 4)]},
-            matched_po_id=purchase_orders["PO-2024-001"].id,
+            matched_po_id=purchase_orders["PO-2025-001"].id,
             matched_grn_ids=[str(grn1.id)],
             tolerance_applied=True,
             tolerance_config_id=tol.id,
         ))
 
-        # Approved invoice 2 — 2-way matched
+        # Posted invoice 2 — 3-way matched (PO-002 has GRN-002)
         db.add(MatchResult(
-            invoice_id=inv_ap2.id,
-            match_type=MatchType.two_way,
+            invoice_id=inv_posted_2.id,
+            match_type=MatchType.three_way,
             match_status=MatchStatus.matched,
             overall_score=100.0,
             details={"lines": [{"line": 1, "status": "matched"}, {"line": 2, "status": "matched"}]},
-            matched_po_id=purchase_orders["PO-2024-004"].id,
+            matched_po_id=purchase_orders["PO-2025-002"].id,
+            matched_grn_ids=[str(grn2.id)],
             tolerance_applied=True,
             tolerance_config_id=tol.id,
         ))
 
-        # Posted invoice — 2-way matched
+        # Approved 1 — 3-way matched (PO-003/GRN-003, freight service)
         db.add(MatchResult(
-            invoice_id=inv_posted.id,
-            match_type=MatchType.two_way,
+            invoice_id=inv_approved_1.id,
+            match_type=MatchType.three_way,
+            match_status=MatchStatus.matched,
+            overall_score=100.0,
+            details={"lines": [{"line": 1, "status": "matched"}]},
+            matched_po_id=purchase_orders["PO-2025-003"].id,
+            matched_grn_ids=[str(grn3.id)],
+            tolerance_applied=True,
+            tolerance_config_id=tol.id,
+        ))
+
+        # Approved 2 — 3-way matched (PO-004/GRN-004, PPE)
+        db.add(MatchResult(
+            invoice_id=inv_approved_2.id,
+            match_type=MatchType.three_way,
             match_status=MatchStatus.matched,
             overall_score=100.0,
             details={"lines": [{"line": 1, "status": "matched"}, {"line": 2, "status": "matched"}]},
-            matched_po_id=purchase_orders["PO-2024-002"].id,
+            matched_po_id=purchase_orders["PO-2025-004"].id,
+            matched_grn_ids=[str(grn4.id)],
             tolerance_applied=True,
             tolerance_config_id=tol.id,
+        ))
+
+        # Pending 1 — 3-way matched (PO-006/GRN-006)
+        db.add(MatchResult(
+            invoice_id=inv_pending_1.id,
+            match_type=MatchType.three_way,
+            match_status=MatchStatus.matched,
+            overall_score=100.0,
+            details={"lines": [{"line": 1, "status": "matched"}, {"line": 2, "status": "matched"}]},
+            matched_po_id=purchase_orders["PO-2025-006"].id,
+            matched_grn_ids=[str(grn6.id)],
+            tolerance_applied=True,
+            tolerance_config_id=tol.id,
+        ))
+
+        # Pending 2 — 3-way matched (PO-007/GRN-007)
+        db.add(MatchResult(
+            invoice_id=inv_pending_2.id,
+            match_type=MatchType.three_way,
+            match_status=MatchStatus.matched,
+            overall_score=100.0,
+            details={"lines": [{"line": 1, "status": "matched"}, {"line": 2, "status": "matched"}]},
+            matched_po_id=purchase_orders["PO-2025-007"].id,
+            matched_grn_ids=[str(grn7.id)],
+            tolerance_applied=True,
+            tolerance_config_id=tol.id,
+        ))
+
+        # Exception 1 — 3-way partial (qty variance: full invoice but partial GRN on PO-005)
+        db.add(MatchResult(
+            invoice_id=inv_exc_1.id,
+            match_type=MatchType.three_way,
+            match_status=MatchStatus.partial,
+            overall_score=55.0,
+            details={"lines": [
+                {"line": 1, "status": "matched"},
+                {"line": 2, "status": "quantity_variance", "invoiced": 3, "received": 2},
+                {"line": 3, "status": "quantity_variance", "invoiced": 2, "received": 0},
+            ]},
+            matched_po_id=purchase_orders["PO-2025-005"].id,
+            matched_grn_ids=[str(grn5.id)],
+            tolerance_applied=True,
+            tolerance_config_id=tol.id,
+        ))
+
+        # Exception 2 — 3-way partial (amount variance: 7% over on PO-010)
+        db.add(MatchResult(
+            invoice_id=inv_exc_2.id,
+            match_type=MatchType.three_way,
+            match_status=MatchStatus.partial,
+            overall_score=40.0,
+            details={"lines": [
+                {"line": 1, "status": "amount_variance", "po_price": 285.00, "inv_price": 304.95},
+                {"line": 2, "status": "amount_variance", "po_price": 88.33, "inv_price": 94.51},
+            ]},
+            matched_po_id=purchase_orders["PO-2025-010"].id,
+            matched_grn_ids=[str(grn10.id)],
+            tolerance_applied=True,
+            tolerance_config_id=tol.id,
+        ))
+
+        # Exception 3 — duplicate detected
+        db.add(MatchResult(
+            invoice_id=inv_exc_dup.id,
+            match_type=MatchType.three_way,
+            match_status=MatchStatus.matched,
+            overall_score=100.0,
+            details={"lines": [{"line": 1, "status": "matched"}, {"line": 2, "status": "matched"}], "duplicate_of": str(inv_posted_2.id)},
+            matched_po_id=purchase_orders["PO-2025-002"].id,
+            matched_grn_ids=[str(grn2.id)],
+            tolerance_applied=False,
+        ))
+
+        # Exception 4 — unmatched (no PO for Apex Chemicals)
+        db.add(MatchResult(
+            invoice_id=inv_exc_nopo.id,
+            match_type=MatchType.two_way,
+            match_status=MatchStatus.unmatched,
+            overall_score=0.0,
+            details={"reason": "No matching PO found for vendor Apex Chemicals International. Vendor not in approved supplier list."},
+            tolerance_applied=False,
         ))
 
         db.flush()
         print("  Created match results")
 
         # ── Exceptions ─────────────────────────────────────────────────
+        # Exception 1: qty variance on CNC order
         db.add(Exception_(
-            invoice_id=inv_exc1.id,
+            invoice_id=inv_exc_1.id,
+            exception_type=ExceptionType.quantity_variance,
+            severity=ExceptionSeverity.high,
+            status=ExceptionStatus.assigned,
+            assigned_to=users["analyst"].id,
+            ai_suggested_resolution="Invoice amount ($78,000) covers full PO quantity but GRN shows only partial receipt: 2/3 spindles received, 0/2 control panels received. Recommend holding payment for undelivered items ($23,000) and paying only for received goods ($55,000). Request vendor to issue corrected invoice.",
+            ai_severity_reasoning="High severity: $23,000 discrepancy between invoiced and received quantities on capital equipment order. Partial delivery with pending items.",
+        ))
+
+        # Exception 2: amount variance on tools
+        db.add(Exception_(
+            invoice_id=inv_exc_2.id,
             exception_type=ExceptionType.amount_variance,
             severity=ExceptionSeverity.medium,
             status=ExceptionStatus.assigned,
             assigned_to=users["analyst"].id,
-            ai_suggested_resolution="Review vendor pricing against PO terms. The 8% variance exceeds the 5% tolerance. Request a credit memo or negotiate revised pricing.",
-            ai_severity_reasoning="Medium severity: amount variance is above tolerance but below $500 absolute difference per line.",
+            ai_suggested_resolution="Invoice total ($5,885) exceeds PO total ($5,500) by 7%. This exceeds the 5% tolerance. Review vendor pricing agreement. MachPrecision may have applied a price increase without PO amendment. Request credit memo for $385 or negotiate revised terms.",
+            ai_severity_reasoning="Medium severity: 7% price variance above tolerance on standard tooling order. No contract price protection clause identified.",
         ))
+
+        # Exception 3: duplicate invoice
         db.add(Exception_(
-            invoice_id=inv_exc2.id,
+            invoice_id=inv_exc_dup.id,
+            exception_type=ExceptionType.duplicate_invoice,
+            severity=ExceptionSeverity.critical,
+            status=ExceptionStatus.open,
+            ai_suggested_resolution="DUPLICATE DETECTED: Invoice TP-2025-INV-00341 from TechParts Global was already processed and posted. Same invoice number, same amount ($12,500), same vendor. Reject immediately to prevent double payment.",
+            ai_severity_reasoning="Critical severity: confirmed duplicate invoice. Payment for original already posted. Processing would result in $12,500 overpayment.",
+        ))
+
+        # Exception 4: missing PO
+        db.add(Exception_(
+            invoice_id=inv_exc_nopo.id,
             exception_type=ExceptionType.missing_po,
             severity=ExceptionSeverity.high,
             status=ExceptionStatus.open,
-            ai_suggested_resolution="Contact the requesting department to obtain a retroactive PO or process as a non-PO invoice with appropriate approvals.",
-            ai_severity_reasoning="High severity: invoice has no purchase order reference, requiring manual review and approval.",
+            ai_suggested_resolution="No purchase order found for Apex Chemicals International. Vendor is not in the approved supplier master. Contact the requesting department to: (1) verify the legitimacy of this purchase, (2) obtain retroactive PO approval, (3) add vendor to approved supplier list if valid.",
+            ai_severity_reasoning="High severity: invoice from non-approved vendor with no PO reference. Potential unauthorized purchase requiring management approval.",
         ))
-        db.add(Exception_(
-            invoice_id=inv_exc3.id,
-            exception_type=ExceptionType.partial_delivery_overrun,
-            severity=ExceptionSeverity.medium,
-            status=ExceptionStatus.assigned,
-            assigned_to=users["analyst"].id,
-            ai_suggested_resolution="Invoice quantity exceeds goods received. Hold payment until remaining goods are received or request vendor to issue a corrected invoice for received quantities only.",
-            ai_severity_reasoning="Medium severity: quantity invoiced exceeds quantity received by ~20%, indicating partial delivery.",
-        ))
-        db.add(Exception_(
-            invoice_id=inv_exc1.id,
-            exception_type=ExceptionType.duplicate_invoice,
-            severity=ExceptionSeverity.low,
-            status=ExceptionStatus.open,
-            ai_suggested_resolution="Compare with previously processed invoices for the same vendor and PO. If confirmed duplicate, reject and notify vendor.",
-            ai_severity_reasoning="Low severity: potential duplicate flagged by system, requires verification.",
-        ))
+
         db.flush()
         print("  Created exceptions")
 
         # ── Approval Tasks ─────────────────────────────────────────────
+        # Pending approvals
         db.add(ApprovalTask(
-            invoice_id=inv_pa1.id,
+            invoice_id=inv_pending_1.id,
             approver_id=users["approver"].id,
             approval_level=1,
             approval_order=1,
             status=ApprovalStatus.pending,
             ai_recommendation=AIRecommendation.approve,
-            ai_recommendation_reason="Invoice matches PO-2024-002 at 100% score. Vendor TechParts Ltd has a clean history with 0 exceptions. Amount ($10,400) is within normal range for this vendor. Recommend approval.",
+            ai_recommendation_reason="Invoice SC-INV-2025-0112 from SteelCore Industries matches PO-2025-006 at 100% (3-way match). All goods received in full at WH-CHI-01. Vendor has clean payment history. Amount ($22,000) within normal range. Recommend approval.",
         ))
         db.add(ApprovalTask(
-            invoice_id=inv_pa2.id,
+            invoice_id=inv_pending_2.id,
             approver_id=users["approver"].id,
             approval_level=1,
             approval_order=1,
             status=ApprovalStatus.pending,
-            ai_recommendation=AIRecommendation.review,
-            ai_recommendation_reason="Invoice matches PO-2024-005 via 3-way match (tolerance passed). Vendor Steel Works Ltd is flagged high-risk. Amount ($12,600) is above $10k threshold. Recommend careful review before approval.",
+            ai_recommendation=AIRecommendation.approve,
+            ai_recommendation_reason="Invoice TP-2025-INV-00398 from TechParts Global matches PO-2025-007 at 100% (3-way match). Circuit boards received and QC-passed. Amount ($31,000) is above $25K threshold — requires senior approval. Recommend approval with standard authorization.",
         ))
-        # Approved task for posted invoice
+        # Approved tasks
         db.add(ApprovalTask(
-            invoice_id=inv_posted.id,
+            invoice_id=inv_approved_1.id,
+            approver_id=users["approver"].id,
+            approval_level=1,
+            approval_order=1,
+            status=ApprovalStatus.approved,
+            decision_at=_hours_ago(96),
+            comments="Freight service confirmed by SCM. Approved.",
+        ))
+        db.add(ApprovalTask(
+            invoice_id=inv_approved_2.id,
             approver_id=users["approver"].id,
             approval_level=1,
             approval_order=1,
             status=ApprovalStatus.approved,
             decision_at=_hours_ago(72),
-            comments="Verified against PO. All good.",
+            comments="PPE delivery verified. All items distributed.",
         ))
-        # Approved tasks for approved invoices
+        # Posted invoice approvals
         db.add(ApprovalTask(
-            invoice_id=inv_ap1.id,
+            invoice_id=inv_posted_1.id,
             approver_id=users["approver"].id,
             approval_level=1,
             approval_order=1,
             status=ApprovalStatus.approved,
-            decision_at=_hours_ago(48),
-            ai_recommendation=AIRecommendation.approve,
+            decision_at=_hours_ago(168),
+            comments="Steel delivery confirmed. 3-way match verified.",
         ))
         db.add(ApprovalTask(
-            invoice_id=inv_ap2.id,
+            invoice_id=inv_posted_2.id,
             approver_id=users["approver"].id,
             approval_level=1,
             approval_order=1,
             status=ApprovalStatus.approved,
-            decision_at=_hours_ago(36),
+            decision_at=_hours_ago(144),
+            comments="Sensors and controllers received. Approved.",
         ))
         db.flush()
         print("  Created approval tasks")
 
         # ── Audit Logs ─────────────────────────────────────────────────
         audit_entries = [
-            ("invoice", inv_posted.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 200),
-            ("invoice", inv_posted.id, "ocr_extracted", ActorType.ai_agent, None, "Claude AI", 195),
-            ("invoice", inv_posted.id, "matched", ActorType.system, None, "System", 190),
-            ("invoice", inv_posted.id, "approved", ActorType.user, users["approver"].id, "Sarah Kim", 180),
-            ("invoice", inv_posted.id, "posted", ActorType.system, None, "System", 170),
-            ("vendor", vendors["V-001"].id, "created", ActorType.user, users["admin"].id, "Kyle Stevens", 300),
-            ("vendor", vendors["V-007"].id, "status_changed", ActorType.user, users["admin"].id, "Kyle Stevens", 100),
-            ("invoice", inv_pa1.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 160),
-            ("invoice", inv_pa1.id, "matched", ActorType.system, None, "System", 155),
-            ("exception", inv_exc1.id, "created", ActorType.system, None, "System", 150),
-            ("exception", inv_exc2.id, "created", ActorType.system, None, "System", 145),
-            ("invoice", inv_ap1.id, "approved", ActorType.user, users["approver"].id, "Sarah Kim", 100),
-            ("invoice", inv_exc3.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 90),
-            ("invoice", inv_exc3.id, "matched", ActorType.system, None, "System", 85),
-            ("exception", inv_exc3.id, "created", ActorType.system, None, "System", 80),
-            ("vendor", vendors["V-003"].id, "risk_level_changed", ActorType.user, users["admin"].id, "Kyle Stevens", 60),
-            ("approval", inv_pa2.id, "ai_recommendation", ActorType.ai_agent, None, "Claude AI", 50),
-            ("invoice", inv_ap2.id, "approved", ActorType.user, users["approver"].id, "Sarah Kim", 40),
+            # Posted invoice 1 lifecycle
+            ("invoice", inv_posted_1.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 240),
+            ("invoice", inv_posted_1.id, "ocr_extracted", ActorType.ai_agent, None, "Claude AI", 238),
+            ("invoice", inv_posted_1.id, "matched", ActorType.system, None, "System", 236),
+            ("invoice", inv_posted_1.id, "approved", ActorType.user, users["approver"].id, "Sarah Kim", 168),
+            ("invoice", inv_posted_1.id, "posted", ActorType.system, None, "System", 166),
+            # Posted invoice 2 lifecycle
+            ("invoice", inv_posted_2.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 220),
+            ("invoice", inv_posted_2.id, "ocr_extracted", ActorType.ai_agent, None, "Claude AI", 218),
+            ("invoice", inv_posted_2.id, "matched", ActorType.system, None, "System", 216),
+            ("invoice", inv_posted_2.id, "approved", ActorType.user, users["approver"].id, "Sarah Kim", 144),
+            ("invoice", inv_posted_2.id, "posted", ActorType.system, None, "System", 142),
+            # Approved invoices
+            ("invoice", inv_approved_1.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 160),
+            ("invoice", inv_approved_1.id, "matched", ActorType.system, None, "System", 158),
+            ("invoice", inv_approved_1.id, "approved", ActorType.user, users["approver"].id, "Sarah Kim", 96),
+            ("invoice", inv_approved_2.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 155),
+            ("invoice", inv_approved_2.id, "matched", ActorType.system, None, "System", 153),
+            ("invoice", inv_approved_2.id, "approved", ActorType.user, users["approver"].id, "Sarah Kim", 72),
+            # Pending approvals
+            ("invoice", inv_pending_1.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 100),
+            ("invoice", inv_pending_1.id, "matched", ActorType.system, None, "System", 98),
+            ("approval", inv_pending_1.id, "ai_recommendation", ActorType.ai_agent, None, "Claude AI", 97),
+            ("invoice", inv_pending_2.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 80),
+            ("invoice", inv_pending_2.id, "matched", ActorType.system, None, "System", 78),
+            ("approval", inv_pending_2.id, "ai_recommendation", ActorType.ai_agent, None, "Claude AI", 77),
+            # Exceptions
+            ("invoice", inv_exc_1.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 60),
+            ("invoice", inv_exc_1.id, "matched", ActorType.system, None, "System", 58),
+            ("exception", inv_exc_1.id, "created", ActorType.system, None, "System", 57),
+            ("invoice", inv_exc_2.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 50),
+            ("exception", inv_exc_2.id, "created", ActorType.system, None, "System", 48),
+            ("invoice", inv_exc_dup.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 40),
+            ("exception", inv_exc_dup.id, "duplicate_detected", ActorType.system, None, "Duplicate Detection AI", 39),
+            ("invoice", inv_exc_nopo.id, "created", ActorType.user, users["clerk"].id, "Maria Garcia", 35),
+            ("exception", inv_exc_nopo.id, "created", ActorType.system, None, "System", 34),
+            # Vendor activities
+            ("vendor", vendors["SUP001"].id, "created", ActorType.user, users["admin"].id, "Kyle Stevens", 300),
+            ("vendor", vendors["SUP002"].id, "created", ActorType.user, users["admin"].id, "Kyle Stevens", 300),
+            ("vendor", vendors["SUP003"].id, "created", ActorType.user, users["admin"].id, "Kyle Stevens", 300),
+            ("vendor", vendors["SUP004"].id, "created", ActorType.user, users["admin"].id, "Kyle Stevens", 300),
+            ("vendor", vendors["SUP005"].id, "created", ActorType.user, users["admin"].id, "Kyle Stevens", 300),
         ]
         for entity_type, entity_id, action, actor_type, actor_id, actor_name, hours in audit_entries:
             db.add(AuditLog(
@@ -739,35 +994,44 @@ def seed() -> None:
         db.add(Notification(
             user_id=users["approver"].id,
             type=NotificationType.approval_request,
-            title="Invoice INV-A-001 Pending Approval",
-            message="Invoice INV-A-001 from TechParts Ltd ($10,400.00) requires your approval. AI recommends: Approve.",
+            title="Invoice SC-INV-2025-0112 Pending Approval",
+            message="Invoice SC-INV-2025-0112 from SteelCore Industries ($22,000.00) requires your approval. 3-way match verified. AI recommends: Approve.",
             related_entity_type="invoice",
-            related_entity_id=inv_pa1.id,
+            related_entity_id=inv_pending_1.id,
             is_read=False,
         ))
         db.add(Notification(
             user_id=users["approver"].id,
             type=NotificationType.approval_request,
-            title="Invoice INV-A-002 Pending Approval",
-            message="Invoice INV-A-002 from Steel Works Ltd ($12,600.00) requires your approval. AI recommends: Review carefully.",
+            title="Invoice TP-2025-INV-00398 Pending Approval",
+            message="Invoice TP-2025-INV-00398 from TechParts Global ($31,000.00) requires your approval. Above $25K threshold. AI recommends: Approve.",
             related_entity_type="invoice",
-            related_entity_id=inv_pa2.id,
+            related_entity_id=inv_pending_2.id,
             is_read=False,
         ))
         db.add(Notification(
             user_id=users["analyst"].id,
             type=NotificationType.exception_assigned,
-            title="Exception Assigned: Amount Variance",
-            message="An amount variance exception for INV-X-001 (Acme Corp) has been assigned to you.",
+            title="Critical: Duplicate Invoice Detected",
+            message="DUPLICATE: Invoice TP-2025-INV-00341 from TechParts Global ($12,500) is a duplicate of an already-posted invoice. Immediate review required.",
             related_entity_type="exception",
-            related_entity_id=inv_exc1.id,
+            related_entity_id=inv_exc_dup.id,
+            is_read=False,
+        ))
+        db.add(Notification(
+            user_id=users["analyst"].id,
+            type=NotificationType.exception_assigned,
+            title="Exception: Quantity Variance on CNC Order",
+            message="Invoice MP-INV-2025-00231 ($78,000) has quantity variance against partial GRN. $23,000 of goods not yet received.",
+            related_entity_type="exception",
+            related_entity_id=inv_exc_1.id,
             is_read=False,
         ))
         db.add(Notification(
             user_id=users["admin"].id,
             type=NotificationType.system,
             title="System Health Check",
-            message="All services are running normally. 15 invoices processed this period.",
+            message="All services running normally. 15 invoices processed this period. 4 exceptions requiring attention.",
             is_read=True,
         ))
         db.flush()

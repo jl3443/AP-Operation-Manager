@@ -18,6 +18,7 @@ class POStatus(str, enum.Enum):
     open = "open"
     partially_received = "partially_received"
     fully_received = "fully_received"
+    service_completed = "service_completed"
     closed = "closed"
     cancelled = "cancelled"
 
