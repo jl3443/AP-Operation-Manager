@@ -1,10 +1,10 @@
-"""Compliance, control mapping, and gap analysis endpoints."""
+"""Compliance, control mapping, gap analysis, scoring, and audit pack endpoints."""
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -252,3 +252,63 @@ def get_compliance_gaps(
     ))
 
     return gaps
+
+
+# ── New Phase 3 Endpoints ────────────────────────────────────────────────
+
+
+@router.get("/control-tests")
+def run_control_tests(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run automated control tests and return results."""
+    from app.services.compliance_engine import run_control_tests
+
+    return run_control_tests(db)
+
+
+@router.get("/scoring")
+def get_compliance_scoring(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Score all invoices for compliance and return aggregate stats."""
+    from app.services.compliance_engine import score_all_invoices
+
+    return score_all_invoices(db)
+
+
+@router.get("/scoring/{invoice_id}")
+def get_invoice_compliance_score(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Score a single invoice's compliance."""
+    from app.services.compliance_engine import score_invoice_compliance
+
+    return score_invoice_compliance(db, invoice_id)
+
+
+@router.get("/policy-linkage/{invoice_id}")
+def get_policy_linkage(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all policy rules that apply to a specific invoice."""
+    from app.services.compliance_engine import link_invoice_to_policies
+
+    return link_invoice_to_policies(db, invoice_id)
+
+
+@router.get("/audit-pack")
+def get_audit_pack(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a comprehensive audit pack with all compliance data."""
+    from app.services.compliance_engine import generate_audit_pack
+
+    return generate_audit_pack(db)

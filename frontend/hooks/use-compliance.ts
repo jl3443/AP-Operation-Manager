@@ -6,6 +6,9 @@ import type {
   RootCauseItem,
   OptimizationProposal,
   TouchlessRate,
+  ControlTestResult,
+  ComplianceScoringResult,
+  AuditPack,
 } from "@/lib/types"
 
 export function useTouchlessRate() {
@@ -40,5 +43,28 @@ export function useOptimizationProposals() {
   return useQuery({
     queryKey: ["analytics", "optimization-proposals"],
     queryFn: () => apiGet<OptimizationProposal[]>("/analytics/optimization-proposals"),
+  })
+}
+
+// ── Phase 3: New Compliance Hooks ─────────────────────────────────
+
+export function useControlTests() {
+  return useQuery({
+    queryKey: ["compliance", "control-tests"],
+    queryFn: () => apiGet<ControlTestResult[]>("/compliance/control-tests"),
+  })
+}
+
+export function useComplianceScoring() {
+  return useQuery({
+    queryKey: ["compliance", "scoring"],
+    queryFn: () => apiGet<ComplianceScoringResult>("/compliance/scoring"),
+  })
+}
+
+export function useAuditPack() {
+  return useQuery({
+    queryKey: ["compliance", "audit-pack"],
+    queryFn: () => apiGet<AuditPack>("/compliance/audit-pack"),
   })
 }

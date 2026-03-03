@@ -463,3 +463,78 @@ export interface OptimizationProposal {
   effort: "low" | "medium" | "high"
   status: "proposed" | "approved" | "implemented"
 }
+
+// ── Phase 3: Compliance Engine Types ──────────────────────────────
+
+export interface ControlTestResult {
+  control_id: string
+  control_name: string
+  test_description: string
+  expected: string
+  actual: string
+  result: "pass" | "fail"
+  severity: "high" | "medium" | "low"
+  tested_at: string
+}
+
+export interface ComplianceCheck {
+  check: string
+  status: "pass" | "fail" | "partial"
+  points: number
+  max: number
+  policy: string
+  detail?: string
+}
+
+export interface InvoiceComplianceScore {
+  invoice_id: string
+  invoice_number: string
+  compliance_score: number
+  total_points: number
+  max_points: number
+  checks: ComplianceCheck[]
+  grade: "A" | "B" | "C" | "F"
+}
+
+export interface ComplianceScoringResult {
+  avg_score: number
+  count: number
+  grade_distribution: Record<string, number>
+  scores: InvoiceComplianceScore[]
+}
+
+export interface AuditPackExceptionSummary {
+  exception_type: string
+  status: string
+  invoice_number: string
+  amount: string
+  created_at: string | null
+  resolution_notes: string | null
+}
+
+export interface AuditPack {
+  generated_at: string
+  period: string
+  executive_summary: {
+    total_invoices: number
+    posted_invoices: number
+    touchless_rate: number
+    avg_compliance_score: number
+    controls_tested: number
+    controls_passed: number
+    controls_failed: number
+    open_exceptions: number
+  }
+  control_test_results: ControlTestResult[]
+  compliance_scoring: {
+    avg_score: number
+    grade_distribution: Record<string, number>
+    invoice_count: number
+  }
+  open_exceptions: AuditPackExceptionSummary[]
+  audit_trail: {
+    total_entries: number
+    by_action: Record<string, number>
+  }
+  knowledge_base: Record<string, unknown>
+}
