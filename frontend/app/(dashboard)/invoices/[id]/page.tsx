@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft,
@@ -11,17 +11,19 @@ import {
   XCircle,
   MessageSquare,
   Send,
-  Clock,
   AlertTriangle,
   ZoomIn,
   ZoomOut,
   RotateCw,
   Play,
   Loader2,
+  Sparkles,
+  Zap,
 } from "lucide-react"
 
 import { useInvoice, useMatchInvoice, useExtractInvoice } from "@/hooks/use-invoices"
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
+import { InvoiceProgressStepper } from "@/components/invoice-progress-stepper"
 import { ConfidenceIndicator } from "@/components/confidence-indicator"
 import { KpiCardSkeleton } from "@/components/loading-skeleton"
 import { QueryError } from "@/components/query-error"
@@ -44,6 +46,7 @@ import {
 export default function InvoiceDetailPage() {
   const params = useParams()
   const invoiceId = params.id as string
+  const router = useRouter()
   const [comment, setComment] = React.useState("")
 
   const { data: invoice, isLoading, error, refetch } = useInvoice(invoiceId)
@@ -104,6 +107,8 @@ export default function InvoiceDetailPage() {
     })
   }
 
+  const subtotal = invoice.line_items.reduce((sum, li) => sum + li.line_total, 0)
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -125,6 +130,16 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Run full agent pipeline (primary action) */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-primary/40 text-primary hover:bg-primary/10"
+            onClick={() => router.push(`/invoices/${invoiceId}/pipeline`)}
+          >
+            <Zap className="size-4" />
+            Run Pipeline
+          </Button>
           {invoice.status === "draft" && (
             <Button
               variant="outline"
@@ -135,7 +150,7 @@ export default function InvoiceDetailPage() {
               {extractMutation.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Play className="size-4" />
+                <Sparkles className="size-4" />
               )}
               Extract
             </Button>
@@ -166,10 +181,17 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
+      {/* Pipeline Progress Stepper */}
+      <Card>
+        <CardContent className="py-4">
+          <InvoiceProgressStepper status={invoice.status} />
+        </CardContent>
+      </Card>
+
       {/* Split View */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Left Panel - Document Viewer */}
-        <Card className="lg:sticky lg:top-6 py-0 overflow-hidden">
+        {/* Left Panel - Styled Document Preview */}
+        <Card className="lg:sticky lg:top-6 py-0">
           <CardHeader className="bg-muted/50 py-3 border-b">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -184,22 +206,118 @@ export default function InvoiceDetailPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="flex items-center justify-center bg-muted/30 h-[600px]">
-              <div className="text-center space-y-3">
-                <div className="mx-auto rounded-2xl bg-muted p-6">
-                  <FileText className="size-12 text-muted-foreground mx-auto" />
+            <div className="bg-gray-100 dark:bg-gray-900 p-6 min-h-[600px] flex items-start justify-center">
+              {/* Styled "paper" invoice */}
+              <div className="bg-white dark:bg-gray-950 shadow-lg rounded w-full max-w-[520px] p-8 text-sm relative border">
+                {/* AI Extracted badge */}
+                {invoice.status !== "draft" && (
+                  <div className="absolute top-3 right-3">
+                    <Badge className="bg-primary text-primary-foreground text-[10px]">
+                      <Sparkles className="size-3 mr-1" />
+                      AI Extracted
+                      {invoice.ocr_confidence_score != null &&
+                        ` · ${(invoice.ocr_confidence_score * 100).toFixed(0)}%`}
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Invoice header */}
+                <div className="flex justify-between items-start border-b pb-4 mb-4">
+                  <div>
+                    <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                      INVOICE
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      #{invoice.invoice_number}
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                    <p>Date: {invoice.invoice_date}</p>
+                    <p>Due: {invoice.due_date}</p>
+                    <p>Currency: {invoice.currency}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Invoice Document
+
+                {/* Vendor info */}
+                <div className="mb-4 text-xs text-gray-600 dark:text-gray-400">
+                  <p className="font-medium text-gray-900 dark:text-gray-100">
+                    Vendor: {invoice.vendor?.name ?? `ID ${invoice.vendor_id.slice(0, 8)}`}
                   </p>
-                  <p className="text-xs text-muted-foreground/70">
-                    {invoice.invoice_number}.pdf
-                  </p>
+                  {invoice.vendor?.vendor_code && (
+                    <p>Code: {invoice.vendor.vendor_code}</p>
+                  )}
                 </div>
-                <Button variant="outline" size="sm">
-                  Open Full Document
-                </Button>
+
+                {/* Line items table */}
+                {invoice.line_items.length > 0 ? (
+                  <table className="w-full text-xs mb-4">
+                    <thead>
+                      <tr className="border-b text-gray-500">
+                        <th className="text-left py-1.5 font-medium">#</th>
+                        <th className="text-left py-1.5 font-medium">Description</th>
+                        <th className="text-right py-1.5 font-medium">Qty</th>
+                        <th className="text-right py-1.5 font-medium">Price</th>
+                        <th className="text-right py-1.5 font-medium">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoice.line_items.map((li) => (
+                        <tr key={li.id} className="border-b border-gray-100 dark:border-gray-800">
+                          <td className="py-1.5 text-gray-400">{li.line_number}</td>
+                          <td className="py-1.5 text-gray-900 dark:text-gray-100">
+                            {li.description ?? "—"}
+                          </td>
+                          <td className="py-1.5 text-right font-mono">{li.quantity}</td>
+                          <td className="py-1.5 text-right font-mono">
+                            ${li.unit_price.toFixed(2)}
+                          </td>
+                          <td className="py-1.5 text-right font-mono font-medium">
+                            ${li.line_total.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-center py-8 text-gray-400 text-xs">
+                    <FileText className="size-8 mx-auto mb-2 opacity-30" />
+                    No line items extracted yet
+                  </div>
+                )}
+
+                {/* Totals */}
+                <div className="border-t pt-3 space-y-1 text-xs">
+                  {subtotal > 0 && (
+                    <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                      <span>Subtotal</span>
+                      <span className="font-mono">
+                        ${subtotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+                  {invoice.tax_amount > 0 && (
+                    <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                      <span>Tax</span>
+                      <span className="font-mono">
+                        ${invoice.tax_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+                  {invoice.freight_amount > 0 && (
+                    <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                      <span>Freight</span>
+                      <span className="font-mono">
+                        ${invoice.freight_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-base pt-2 border-t text-gray-900 dark:text-gray-100">
+                    <span>Total</span>
+                    <span className="font-mono">
+                      ${invoice.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -361,26 +479,6 @@ export default function InvoiceDetailPage() {
               </CardContent>
             </Card>
           )}
-
-          {/* Status Info */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-3 rounded-lg bg-muted/50 border p-3">
-                <Clock className="size-5 text-muted-foreground shrink-0" />
-                <div>
-                  <p className="text-sm font-medium capitalize">
-                    {invoice.status.replaceAll("_", " ")}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Last updated: {new Date(invoice.updated_at).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -399,7 +497,6 @@ export default function InvoiceDetailPage() {
 
           <Separator />
 
-          {/* New Comment (placeholder - wired when exceptions exist) */}
           <div className="flex gap-3">
             <Avatar className="size-8 shrink-0">
               <AvatarFallback className="bg-primary text-primary-foreground text-xs">

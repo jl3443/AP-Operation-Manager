@@ -92,13 +92,33 @@ export function useUploadInvoice() {
   })
 }
 
+export interface ExtractResult {
+  message: string
+  data: {
+    confidence: number
+    extracted_data: Record<string, unknown>
+    raw_text: string
+    pages_processed: number
+  }
+  classification: {
+    document_type: string
+    classification_confidence: number
+    classification_reasoning: string
+    validation_passed: boolean
+    validation_issues: Array<{ field: string; issue: string; severity: string }>
+    field_confidence: Record<string, string>
+    needs_human_review: boolean
+    review_reasons: string[]
+    quality_score: number
+    recommendations: string[]
+  }
+}
+
 export function useExtractInvoice() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (invoiceId: string) =>
-      apiPost<{ message: string; data: Record<string, unknown> }>(
-        `/invoices/${invoiceId}/extract`
-      ),
+      apiPost<ExtractResult>(`/invoices/${invoiceId}/extract`),
     onSuccess: (_data, invoiceId) => {
       queryClient.invalidateQueries({ queryKey: ["invoices", "detail", invoiceId] })
     },
@@ -119,6 +139,40 @@ export function useMatchInvoice() {
       queryClient.invalidateQueries({ queryKey: ["invoices", "detail", invoiceId] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
       queryClient.invalidateQueries({ queryKey: ["exceptions"] })
+    },
+  })
+}
+
+export interface PipelineStep {
+  step: string
+  label: string
+  agent: string
+  status: "complete" | "error" | "skipped"
+  duration_ms: number
+  output: Record<string, unknown>
+  error?: string
+}
+
+export interface PipelineResult {
+  invoice_id: string
+  invoice_number: string
+  total_duration_ms: number
+  steps: PipelineStep[]
+  final_status: string
+  recommendation: "approve" | "review" | "reject" | null
+}
+
+export function useRunPipeline() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (invoiceId: string) =>
+      apiPost<PipelineResult>(`/invoices/${invoiceId}/run-pipeline`),
+    onSuccess: (_data, invoiceId) => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] })
+      queryClient.invalidateQueries({ queryKey: ["invoices", "detail", invoiceId] })
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] })
+      queryClient.invalidateQueries({ queryKey: ["approvals"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     },
   })
 }

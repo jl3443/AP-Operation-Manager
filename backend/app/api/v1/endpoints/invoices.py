@@ -22,7 +22,10 @@ from app.schemas.invoice import (
     InvoiceResponse,
     InvoiceUpdate,
 )
+import time
+
 from app.services import audit_service, invoice_service, match_service, s3_service
+from app.services.approval_service import _get_ai_recommendation, create_approval_tasks
 from app.services.classification_service import classify_and_validate
 from app.services.ocr_service import extract_invoice, mock_extract_invoice
 
@@ -461,3 +464,253 @@ def batch_process_invoices(
             db.rollback()
 
     return results
+
+
+@router.post("/{invoice_id}/run-pipeline")
+def run_invoice_pipeline(
+    invoice_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run the full AP agent pipeline: OCR → Classification → 3-Way Match → Approval Recommendation.
+
+    Each step's raw JSON output is returned for live visualization.
+    """
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    steps = []
+    pipeline_start = time.time()
+
+    # ── Step 1: OCR Extraction ────────────────────────────────────────────────
+    step_start = time.time()
+    try:
+        if invoice.file_storage_path:
+            file_content = s3_service.download_file(invoice.file_storage_path)
+            filename = invoice.file_storage_path.rsplit("/", 1)[-1] if "/" in invoice.file_storage_path else "invoice.pdf"
+            ocr_result = extract_invoice(file_content, filename=filename)
+        else:
+            from app.services.ocr_service import mock_extract_invoice as _mock
+            ocr_result = _mock(None)
+
+        extracted = ocr_result.get("extracted_data", {})
+
+        # Persist extracted fields
+        invoice.ocr_confidence_score = ocr_result["confidence"]
+        if extracted.get("invoice_number"):
+            invoice.invoice_number = extracted["invoice_number"]
+        if extracted.get("invoice_date"):
+            try:
+                invoice.invoice_date = _date.fromisoformat(extracted["invoice_date"])
+            except ValueError:
+                pass
+        if extracted.get("due_date"):
+            try:
+                invoice.due_date = _date.fromisoformat(extracted["due_date"])
+            except ValueError:
+                pass
+        if extracted.get("total_amount"):
+            invoice.total_amount = extracted["total_amount"]
+        if extracted.get("tax_amount") is not None:
+            invoice.tax_amount = extracted["tax_amount"]
+        if extracted.get("currency"):
+            invoice.currency = extracted["currency"]
+
+        extracted_lines = extracted.get("line_items", [])
+        if extracted_lines:
+            db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id == invoice.id).delete()
+            for li in extracted_lines:
+                db.add(InvoiceLineItem(
+                    invoice_id=invoice.id,
+                    line_number=li.get("line_number", 1),
+                    description=li.get("description"),
+                    quantity=li.get("quantity", 1),
+                    unit_price=li.get("unit_price", 0),
+                    line_total=li.get("line_total", 0),
+                    tax_amount=li.get("tax_amount", 0),
+                    ai_gl_prediction=li.get("ai_gl_prediction"),
+                    ai_confidence=li.get("ai_confidence"),
+                ))
+
+        invoice.status = InvoiceStatus.extracted
+        db.commit()
+        db.refresh(invoice)
+
+        steps.append({
+            "step": "ocr_extraction",
+            "label": "OCR Extraction",
+            "agent": "Claude Vision (claude-haiku-4-5-20251001)",
+            "status": "complete",
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "output": {
+                "confidence": ocr_result["confidence"],
+                "pages_processed": ocr_result.get("pages_processed", 1),
+                "extracted_data": extracted,
+                "raw_text_preview": (ocr_result.get("raw_text", "") or "")[:500],
+            },
+        })
+    except Exception as exc:
+        steps.append({
+            "step": "ocr_extraction",
+            "label": "OCR Extraction",
+            "agent": "Claude Vision (claude-haiku-4-5-20251001)",
+            "status": "error",
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "error": str(exc),
+            "output": {},
+        })
+        return {
+            "invoice_id": str(invoice_id),
+            "invoice_number": invoice.invoice_number,
+            "total_duration_ms": int((time.time() - pipeline_start) * 1000),
+            "steps": steps,
+            "final_status": invoice.status.value,
+            "recommendation": None,
+        }
+
+    # ── Step 2: Document Classification ──────────────────────────────────────
+    step_start = time.time()
+    try:
+        classification = classify_and_validate(
+            db,
+            invoice_id=invoice.id,
+            extracted_data=extracted,
+            ocr_confidence=ocr_result["confidence"],
+        )
+        steps.append({
+            "step": "classification",
+            "label": "Document Classification",
+            "agent": "Claude (claude-haiku-4-5-20251001)",
+            "status": "complete",
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "output": classification,
+        })
+    except Exception as exc:
+        steps.append({
+            "step": "classification",
+            "label": "Document Classification",
+            "agent": "Claude (claude-haiku-4-5-20251001)",
+            "status": "error",
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "error": str(exc),
+            "output": {},
+        })
+
+    # ── Step 3: 3-Way / 2-Way Matching ───────────────────────────────────────
+    step_start = time.time()
+    try:
+        po_line_ids = [li.po_line_id for li in invoice.line_items if li.po_line_id]
+        use_three_way = False
+        if po_line_ids:
+            grn_count = (
+                db.query(func.count(GRNLineItem.id))
+                .filter(GRNLineItem.po_line_id.in_(po_line_ids))
+                .scalar()
+            ) or 0
+            use_three_way = grn_count > 0
+
+        if use_three_way:
+            match_result = match_service.run_three_way_match(db, invoice.id)
+        else:
+            match_result = match_service.run_two_way_match(db, invoice.id)
+
+        db.commit()
+
+        # Count exceptions created for this invoice
+        from app.models.exception import Exception_
+        exc_count = db.query(Exception_).filter(Exception_.invoice_id == invoice.id).count()
+
+        steps.append({
+            "step": "three_way_match",
+            "label": "3-Way Match" if use_three_way else "2-Way Match",
+            "agent": "AP Match Engine (rule-based, PO + GRN data)",
+            "status": "complete",
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "output": {
+                "match_type": match_result.match_type.value,
+                "match_status": match_result.match_status.value,
+                "overall_score": match_result.overall_score,
+                "matched_po_id": str(match_result.matched_po_id) if match_result.matched_po_id else None,
+                "matched_grn_ids": [str(g) for g in (match_result.matched_grn_ids or [])],
+                "tolerance_applied": match_result.tolerance_applied,
+                "exceptions_created": exc_count,
+                "details": match_result.details,
+            },
+        })
+    except Exception as exc:
+        steps.append({
+            "step": "three_way_match",
+            "label": "3-Way Match",
+            "agent": "AP Match Engine (rule-based, PO + GRN data)",
+            "status": "error",
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "error": str(exc),
+            "output": {},
+        })
+
+    # ── Step 4: Approval Recommendation ──────────────────────────────────────
+    step_start = time.time()
+    db.refresh(invoice)
+    recommendation_value = None
+    try:
+        # Create approval tasks (wires into approval queue)
+        try:
+            create_approval_tasks(db, invoice.id)
+            db.commit()
+        except Exception:
+            db.rollback()  # Tasks may already exist — ignore
+
+        ai_rec, ai_reason = _get_ai_recommendation(db, invoice)
+        recommendation_value = ai_rec.value
+
+        # Parse out risk factors if embedded in reasoning string
+        risk_factors: list = []
+        reasoning = ai_reason
+        if " Risk factors: " in ai_reason:
+            parts = ai_reason.split(" Risk factors: ", 1)
+            reasoning = parts[0]
+            risk_factors = [r.strip() for r in parts[1].rstrip(".").split(",") if r.strip()]
+
+        steps.append({
+            "step": "approval_recommendation",
+            "label": "Approval Recommendation",
+            "agent": "Claude (claude-haiku-4-5-20251001)",
+            "status": "complete",
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "output": {
+                "recommendation": ai_rec.value,
+                "reasoning": reasoning,
+                "risk_factors": risk_factors,
+            },
+        })
+    except Exception as exc:
+        steps.append({
+            "step": "approval_recommendation",
+            "label": "Approval Recommendation",
+            "agent": "Claude (claude-haiku-4-5-20251001)",
+            "status": "error",
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "error": str(exc),
+            "output": {},
+        })
+
+    audit_service.log_action(
+        db,
+        entity_type="invoice",
+        entity_id=invoice.id,
+        action="pipeline_executed",
+        actor_type=ActorType.ai_agent,
+        actor_name="AP Pipeline Agent",
+        evidence={"steps": len(steps), "total_ms": int((time.time() - pipeline_start) * 1000)},
+    )
+    db.commit()
+
+    return {
+        "invoice_id": str(invoice_id),
+        "invoice_number": invoice.invoice_number,
+        "total_duration_ms": int((time.time() - pipeline_start) * 1000),
+        "steps": steps,
+        "final_status": invoice.status.value,
+        "recommendation": recommendation_value,
+    }

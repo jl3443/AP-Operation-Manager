@@ -65,6 +65,8 @@ services:
       S3_SECRET_KEY: minioadmin123
       S3_BUCKET: ap-invoices
       CORS_ORIGINS: '["http://localhost:3000"]'
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-claude-haiku-4-5-20251001}
     ports:
       - "8000:8000"
     volumes:
@@ -91,6 +93,8 @@ services:
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin123
       S3_BUCKET: ap-invoices
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-claude-haiku-4-5-20251001}
     volumes:
       - ./backend:/app
     depends_on:
