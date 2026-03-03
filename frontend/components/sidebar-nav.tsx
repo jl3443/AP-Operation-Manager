@@ -14,6 +14,7 @@ import {
   History,
   Shield,
   BookOpen,
+  Sparkles,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -35,6 +36,7 @@ const navItems = [
   { href: "/audit", label: "Audit Trail", icon: History },
   { href: "/compliance", label: "Compliance", icon: Shield },
   { href: "/knowledge", label: "Knowledge Base", icon: BookOpen },
+  { href: "/improvements", label: "AI Improvements", icon: Sparkles },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 
