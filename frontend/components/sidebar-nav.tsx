@@ -15,6 +15,7 @@ import {
   Shield,
   BookOpen,
   Sparkles,
+  Layers,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -37,6 +38,7 @@ const navItems = [
   { href: "/compliance", label: "Compliance", icon: Shield },
   { href: "/knowledge", label: "Knowledge Base", icon: BookOpen },
   { href: "/improvements", label: "AI Improvements", icon: Sparkles },
+  { href: "/system-design", label: "System Design", icon: Layers },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 

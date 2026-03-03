@@ -18,6 +18,7 @@ from app.api.v1.endpoints import (
     knowledge,
     learning,
     operations,
+    system_design,
     vendors,
 )
 
@@ -37,3 +38,4 @@ api_router.include_router(compliance.router)
 api_router.include_router(operations.router)
 api_router.include_router(knowledge.router)
 api_router.include_router(learning.router)
+api_router.include_router(system_design.router)
