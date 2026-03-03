@@ -27,7 +27,7 @@ import time
 from app.services import audit_service, invoice_service, match_service, s3_service
 from app.services.approval_service import _get_ai_recommendation, create_approval_tasks
 from app.services.classification_service import classify_and_validate
-from app.services.ocr_service import extract_invoice, mock_extract_invoice
+from app.services.ocr_service import extract_invoice
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -209,7 +209,10 @@ def extract_invoice_endpoint(
         filename = invoice.file_storage_path.rsplit("/", 1)[-1] if "/" in invoice.file_storage_path else "invoice.pdf"
         result = extract_invoice(file_content, filename=filename)
     else:
-        result = mock_extract_invoice(invoice.file_storage_path)
+        raise HTTPException(
+            status_code=400,
+            detail="No file available for extraction. Upload a file first.",
+        )
 
     # Update invoice fields from extraction
     extracted = result.get("extracted_data", {})
@@ -491,8 +494,10 @@ def run_invoice_pipeline(
             filename = invoice.file_storage_path.rsplit("/", 1)[-1] if "/" in invoice.file_storage_path else "invoice.pdf"
             ocr_result = extract_invoice(file_content, filename=filename)
         else:
-            from app.services.ocr_service import mock_extract_invoice as _mock
-            ocr_result = _mock(None)
+            raise HTTPException(
+                status_code=400,
+                detail="No file available for extraction. Upload a file first.",
+            )
 
         extracted = ocr_result.get("extracted_data", {})
 
@@ -537,15 +542,17 @@ def run_invoice_pipeline(
         db.commit()
         db.refresh(invoice)
 
+        extraction_method = ocr_result.get("extraction_method", "unknown")
         steps.append({
             "step": "ocr_extraction",
             "label": "OCR Extraction",
-            "agent": "Claude Vision (claude-haiku-4-5-20251001)",
+            "agent": f"3-Tier OCR Pipeline ({extraction_method})",
             "status": "complete",
             "duration_ms": int((time.time() - step_start) * 1000),
             "output": {
                 "confidence": ocr_result["confidence"],
                 "pages_processed": ocr_result.get("pages_processed", 1),
+                "extraction_method": extraction_method,
                 "extracted_data": extracted,
                 "raw_text_preview": (ocr_result.get("raw_text", "") or "")[:500],
             },

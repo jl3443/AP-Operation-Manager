@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.approval import ApprovalStatus, ApprovalTask
 from app.models.exception import Exception_, ExceptionStatus
 from app.models.goods_receipt import GoodsReceipt, GRNLineItem
-from app.models.invoice import Invoice, InvoiceStatus
+from app.models.invoice import Invoice, InvoiceLineItem, InvoiceStatus
 from app.models.matching import MatchResult
 from app.models.purchase_order import POLineItem, PurchaseOrder
 from app.models.vendor import Vendor
@@ -41,11 +41,16 @@ exceptions, approvals, vendor management
 - Reference policy rules, contract terms, and audit findings from the Knowledge Base
 - Answer questions about AP policy, approval thresholds, matching requirements, \
   exception SLAs, and supplier contract terms
+- Access detailed invoice content including OCR-extracted line items, \
+  amounts, dates, PO references, and vendor information from uploaded PDFs
+- Compare invoice line items against PO line items and GRN receipts
 
 Keep answers concise and actionable. Use bullet points for lists. \
 When referencing amounts, always include the currency. \
 When asked about uploaded data or datasets, refer to the PO, GRN, and \
-vendor data provided below — this IS the uploaded data."""
+vendor data provided below — this IS the uploaded data.
+When asked about a specific invoice, use the detailed invoice data including \
+line items, OCR confidence, and file paths provided in the context."""
 
 # Maximum messages stored per conversation
 MAX_HISTORY = 20
@@ -196,24 +201,39 @@ def _get_system_stats(db: Session) -> str:
         + "\n"
     )
 
-    # ── Invoice Data ───────────────────────────────────────────────
+    # ── Invoice Data (with line items and file info) ────────────────
     invs = (
         db.query(Invoice)
-        .options(joinedload(Invoice.vendor))
+        .options(
+            joinedload(Invoice.vendor),
+            joinedload(Invoice.line_items),
+        )
         .order_by(Invoice.invoice_date.desc())
         .all()
     )
     inv_lines = []
     for inv in invs:
         vendor_name = inv.vendor.name if inv.vendor else "Unknown"
+        ocr_conf = f"{inv.ocr_confidence_score:.0%}" if inv.ocr_confidence_score else "N/A"
+        file_info = f"File: {inv.file_storage_path}" if inv.file_storage_path else "No file"
         inv_lines.append(
             f"  {inv.invoice_number} | Vendor: {vendor_name} | "
             f"Date: {inv.invoice_date} | Due: {inv.due_date} | "
             f"Amount: ${float(inv.total_amount):,.2f} | "
-            f"Status: {inv.status.value} | Source: {inv.source_channel.value}"
+            f"Tax: ${float(inv.tax_amount or 0):,.2f} | "
+            f"Status: {inv.status.value} | Source: {inv.source_channel.value} | "
+            f"OCR: {ocr_conf} | {file_info}"
         )
+        # Include line items for each invoice
+        for li in (inv.line_items or []):
+            gl_info = f"GL: {li.ai_gl_prediction} ({li.ai_confidence:.0%})" if li.ai_gl_prediction else "GL: N/A"
+            inv_lines.append(
+                f"    Line {li.line_number}: {li.description} | "
+                f"Qty: {li.quantity} x ${float(li.unit_price):,.2f} = ${float(li.line_total):,.2f} | "
+                f"{gl_info}"
+            )
     stats += (
-        f"\n=== INVOICE DATA ({len(invs)} records) ===\n"
+        f"\n=== INVOICE DATA ({len(invs)} records, with line items) ===\n"
         + "\n".join(inv_lines)
         + "\n"
     )

@@ -93,9 +93,15 @@ class AIService:
 
         b64 = base64.standard_b64encode(image_data).decode("utf-8")
 
+        # PDFs use "document" type; images use "image" type
+        if media_type == "application/pdf":
+            block_type = "document"
+        else:
+            block_type = "image"
+
         content: list[dict[str, Any]] = [
             {
-                "type": "image",
+                "type": block_type,
                 "source": {
                     "type": "base64",
                     "media_type": media_type,
@@ -108,6 +114,23 @@ class AIService:
         return self._send(
             system_prompt=system_prompt,
             messages=[{"role": "user", "content": content}],
+            max_tokens=max_tokens,
+        )
+
+    def call_claude_with_text(
+        self,
+        system_prompt: str,
+        text_content: str,
+        user_message: str = "Extract structured data from this text.",
+        max_tokens: int = 4096,
+    ) -> Optional[str]:
+        """Send extracted text to Claude for structured extraction."""
+        if not self.available:
+            return None
+        combined_message = f"{user_message}\n\n--- DOCUMENT TEXT ---\n{text_content}"
+        return self._send(
+            system_prompt=system_prompt,
+            messages=[{"role": "user", "content": combined_message}],
             max_tokens=max_tokens,
         )
 
