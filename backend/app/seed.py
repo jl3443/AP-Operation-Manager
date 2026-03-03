@@ -1039,6 +1039,26 @@ def seed() -> None:
 
         # ── Commit ─────────────────────────────────────────────────────
         db.commit()
+        print("\nCore data seed complete!")
+
+        # ── Knowledge Base: Parse AP_Inputs documents ─────────────────
+        print("\n  Parsing AP_Inputs documents for Knowledge Base...")
+        try:
+            from app.services.document_parser import parse_all_ap_inputs
+
+            ap_inputs_dir = "/Users/kyle/Desktop/AP-Digital-Ops-Manager/AP_Inputs"
+            import os
+            if os.path.exists(ap_inputs_dir):
+                result = parse_all_ap_inputs(db, ap_inputs_dir, use_ai=False)
+                print(f"  Parsed {len(result['documents'])} documents, extracted {result['total_rules']} rules")
+                for doc_info in result["documents"]:
+                    print(f"    - {doc_info['filename']}: {doc_info['rules_extracted']} rules")
+            else:
+                print(f"  AP_Inputs dir not found at {ap_inputs_dir} — skipping document parsing")
+        except Exception as e:
+            print(f"  Warning: Document parsing failed: {e}")
+            # Don't fail the whole seed for optional parsing
+
         print("\nSeed complete!")
 
     except Exception:

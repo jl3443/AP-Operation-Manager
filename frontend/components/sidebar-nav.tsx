@@ -13,6 +13,7 @@ import {
   Upload,
   History,
   Shield,
+  BookOpen,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -33,6 +34,7 @@ const navItems = [
   { href: "/import", label: "Import Data", icon: Upload },
   { href: "/audit", label: "Audit Trail", icon: History },
   { href: "/compliance", label: "Compliance", icon: Shield },
+  { href: "/knowledge", label: "Knowledge Base", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 

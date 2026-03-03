@@ -38,6 +38,9 @@ exceptions, approvals, vendor management
 - Identify patterns, trends, and anomalies in the data
 - Offer best-practice advice for AP operations
 - Cross-reference POs, GRNs, and invoices for 3-way match analysis
+- Reference policy rules, contract terms, and audit findings from the Knowledge Base
+- Answer questions about AP policy, approval thresholds, matching requirements, \
+  exception SLAs, and supplier contract terms
 
 Keep answers concise and actionable. Use bullet points for lists. \
 When referencing amounts, always include the currency. \
@@ -311,9 +314,16 @@ def chat(
 
     history = _conversations[key]
 
-    # Build system prompt with live stats
+    # Build system prompt with live stats + knowledge base
     stats = _get_system_stats(db)
+    try:
+        from app.services.knowledge_base import get_rules_for_context
+        kb_context = get_rules_for_context(db)
+    except Exception:
+        kb_context = ""
     system = f"{CHAT_SYSTEM_PROMPT}\n\n{stats}"
+    if kb_context:
+        system += f"\n\n{kb_context}"
 
     # Add user message to history
     history.append({"role": "user", "content": message})

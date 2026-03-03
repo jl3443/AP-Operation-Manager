@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     exceptions,
     import_data,
     invoices,
+    knowledge,
     operations,
     vendors,
 )
@@ -33,3 +34,4 @@ api_router.include_router(audit.router)
 api_router.include_router(config.router)
 api_router.include_router(compliance.router)
 api_router.include_router(operations.router)
+api_router.include_router(knowledge.router)
