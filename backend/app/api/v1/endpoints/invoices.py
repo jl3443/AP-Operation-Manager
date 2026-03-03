@@ -621,6 +621,35 @@ def run_invoice_pipeline(
         from app.models.exception import Exception_
         exc_count = db.query(Exception_).filter(Exception_.invoice_id == invoice.id).count()
 
+        # Build header-level match info for the comparison view
+        from app.models.purchase_order import PurchaseOrder
+        header_match = {}
+        matched_po = None
+        if match_result.matched_po_id:
+            matched_po = db.query(PurchaseOrder).filter(PurchaseOrder.id == match_result.matched_po_id).first()
+        if matched_po:
+            vendor_match = str(invoice.vendor_id) == str(matched_po.vendor_id) if invoice.vendor_id and matched_po.vendor_id else False
+            header_match = {
+                "vendor": {"match": vendor_match},
+                "po_number": {"match": True, "value": matched_po.po_number},
+                "currency": {"match": (invoice.currency or "USD") == (matched_po.currency or "USD")},
+                "invoice_total": float(invoice.total_amount) if invoice.total_amount else 0,
+                "po_total": float(matched_po.total_amount) if matched_po.total_amount else 0,
+            }
+
+        # Tolerance config summary
+        from app.models.config import ToleranceConfig
+        tol_summary = None
+        if match_result.tolerance_config_id:
+            tol_cfg = db.query(ToleranceConfig).filter(ToleranceConfig.id == match_result.tolerance_config_id).first()
+            if tol_cfg:
+                tol_summary = {
+                    "scope": tol_cfg.scope,
+                    "amount_pct": tol_cfg.amount_tolerance_pct,
+                    "amount_abs": float(tol_cfg.amount_tolerance_abs) if tol_cfg.amount_tolerance_abs else 0,
+                    "quantity_pct": tol_cfg.quantity_tolerance_pct,
+                }
+
         steps.append({
             "step": "three_way_match",
             "label": "3-Way Match" if use_three_way else "2-Way Match",
@@ -634,7 +663,9 @@ def run_invoice_pipeline(
                 "matched_po_id": str(match_result.matched_po_id) if match_result.matched_po_id else None,
                 "matched_grn_ids": [str(g) for g in (match_result.matched_grn_ids or [])],
                 "tolerance_applied": match_result.tolerance_applied,
+                "tolerance_config": tol_summary,
                 "exceptions_created": exc_count,
+                "header_match": header_match,
                 "details": match_result.details,
             },
         })

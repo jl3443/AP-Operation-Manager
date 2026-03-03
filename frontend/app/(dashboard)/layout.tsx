@@ -192,7 +192,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Main scrollable content */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 overflow-hidden">
           <main className="p-6">{children}</main>
         </ScrollArea>
       </div>
