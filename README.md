@@ -10,6 +10,149 @@ backend/           FastAPI + SQLAlchemy 2.0 + PostgreSQL
 docker-compose.yml PostgreSQL, Redis, MinIO (S3), Backend, Frontend
 ```
 
+### AI-Powered Processing Pipeline
+
+```mermaid
+flowchart TB
+    %% ── INGESTION ──────────────────────────────────────────────
+    subgraph Ingestion["📥 Ingestion"]
+        direction LR
+        Upload["PDF / Image<br/>Upload"]
+        CSV["CSV / Excel<br/>Bulk Import"]
+        Email["Email<br/>Attachments"]
+    end
+
+    %% ── OCR & INTELLIGENCE ────────────────────────────────────
+    subgraph OCR["🧠 AI Extraction"]
+        direction TB
+        Tier1["Tier 1 · pdfplumber<br/><small>Digital PDF text extraction</small>"]
+        Tier2["Tier 2 · Tesseract OCR<br/><small>Scanned PDF → image → text</small>"]
+        Tier3["Tier 3 · Claude Vision<br/><small>Structured JSON extraction</small>"]
+        Tier1 -->|"insufficient text"| Tier2
+        Tier2 -->|fallback| Tier3
+    end
+
+    subgraph Intelligence["🤖 AI Classification"]
+        direction TB
+        Classify["Document Type<br/>& Quality Score"]
+        GLPredict["GL Account<br/>Prediction"]
+        Confidence["Confidence<br/>Scoring"]
+    end
+
+    %% ── CORE PIPELINE ─────────────────────────────────────────
+    subgraph Pipeline["⚙️ Core Pipeline"]
+        direction TB
+        VendorRes["Vendor<br/>Resolution"]
+        DupCheck["🔍 Duplicate<br/>Detection"]
+        AutoLink["Auto-Link<br/>PO Lines"]
+        Match["Match Engine"]
+        MatchResult{"Match<br/>Result"}
+
+        VendorRes --> DupCheck --> AutoLink --> Match --> MatchResult
+    end
+
+    subgraph MatchEngine["Match Engine Detail"]
+        direction LR
+        TwoWay["2-Way Match<br/><small>Invoice ↔ PO</small>"]
+        ThreeWay["3-Way Match<br/><small>Invoice ↔ PO ↔ GRN</small>"]
+        Tolerance["Tolerance<br/>Evaluation"]
+    end
+
+    %% ── EXCEPTION HANDLING ────────────────────────────────────
+    subgraph Exceptions["⚠️ Exception Queue"]
+        direction TB
+        ExTypes["12 Exception Types<br/><small>missing PO · amount variance<br/>duplicate · vendor on hold<br/>tax variance · expired PO …</small>"]
+        AIAnalysis["🤖 AI Analysis<br/><small>Severity · Resolution guidance</small>"]
+        ExTypes --> AIAnalysis
+    end
+
+    subgraph Resolution["🔧 AI Resolution Engine"]
+        direction TB
+        Playbook["Playbook Selection<br/><small>13 type-specific playbooks</small>"]
+        Plan["Resolution Plan<br/><small>Structured action steps</small>"]
+        AutoExec["Auto-Execute<br/><small>100+ action handlers</small>"]
+        HumanGate{"Human<br/>Approval?"}
+        Playbook --> Plan --> AutoExec --> HumanGate
+    end
+
+    subgraph AutoRes["⚡ Auto-Resolution"]
+        direction TB
+        ToleranceCheck["Within Tolerance?"]
+        AutoResolve["Auto-Resolve<br/><small>tolerance_applied</small>"]
+    end
+
+    %% ── APPROVAL ──────────────────────────────────────────────
+    subgraph Approval["✅ Approval Workflow"]
+        direction TB
+        AIRisk["🤖 AI Risk Assessment<br/><small>approve · reject · review</small>"]
+        Matrix["Approval Matrix<br/><small>Role-based routing</small>"]
+        Decision{"Decision"}
+        AIRisk --> Matrix --> Decision
+    end
+
+    %% ── OUTPUT ────────────────────────────────────────────────
+    subgraph Output["📊 Output"]
+        direction LR
+        Posted["✅ Posted<br/>to ERP"]
+        Dashboard["KPI<br/>Dashboard"]
+        Analytics["Analytics<br/>& Reports"]
+        AuditTrail["Audit<br/>Trail"]
+    end
+
+    %% ── SUPPORTING ────────────────────────────────────────────
+    subgraph Support["💬 AI Assistant"]
+        Chat["Chat Panel<br/><small>Real-time system queries<br/>Exception guidance<br/>AP domain expertise</small>"]
+    end
+
+    subgraph Background["🔄 Background Tasks"]
+        direction LR
+        BatchMatch["Batch<br/>Matching"]
+        AutoResScan["Auto-Resolution<br/>Scan"]
+        DupScan["Duplicate<br/>Scan"]
+    end
+
+    %% ── CONNECTIONS ───────────────────────────────────────────
+    Ingestion --> OCR
+    OCR --> Intelligence
+    Intelligence --> Pipeline
+
+    Match -.-> MatchEngine
+
+    MatchResult -->|"✅ Matched"| Approval
+    MatchResult -->|"❌ Variance"| Exceptions
+    MatchResult -->|"≈ Near tolerance"| AutoRes
+
+    AutoRes -->|"resolved"| Approval
+    AutoRes -->|"exceeds"| Exceptions
+
+    Exceptions --> Resolution
+    HumanGate -->|"Yes — needs review"| Exceptions
+    HumanGate -->|"No — auto-resolved"| Approval
+
+    Decision -->|"Approved"| Output
+    Decision -->|"Rejected"| Exceptions
+
+    Background -.-> Pipeline
+    Support -.-> Output
+
+    %% ── STYLES ────────────────────────────────────────────────
+    style Ingestion fill:#e8f4fd,stroke:#2196F3,color:#0d47a1
+    style OCR fill:#fff3e0,stroke:#ff9800,color:#e65100
+    style Intelligence fill:#fff3e0,stroke:#ff9800,color:#e65100
+    style Pipeline fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
+    style MatchEngine fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
+    style Exceptions fill:#ffebee,stroke:#f44336,color:#b71c1c
+    style Resolution fill:#ffebee,stroke:#f44336,color:#b71c1c
+    style AutoRes fill:#fff8e1,stroke:#ffc107,color:#f57f17
+    style Approval fill:#e8f5e9,stroke:#4caf50,color:#1b5e20
+    style Output fill:#e0f2f1,stroke:#009688,color:#004d40
+    style Support fill:#ede7f6,stroke:#673ab7,color:#311b92
+    style Background fill:#eceff1,stroke:#607d8b,color:#263238
+    style MatchResult fill:#ce93d8,stroke:#9c27b0,color:#fff
+    style Decision fill:#a5d6a7,stroke:#4caf50,color:#1b5e20
+    style HumanGate fill:#ef9a9a,stroke:#f44336,color:#b71c1c
+```
+
 ## Key Features
 
 ### Invoice Processing
