@@ -177,23 +177,7 @@ export default function InvoicesPage() {
               <SelectItem value="posted">Posted</SelectItem>
             </SelectContent>
           </Select>
-          {/* TODO: Wire when backend adds source_channel filter param */}
-          <Select disabled>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="All Sources" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="manual">Manual</SelectItem>
-              <SelectItem value="email">Email</SelectItem>
-              <SelectItem value="api">API</SelectItem>
-              <SelectItem value="csv">CSV</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm">
-            <Filter className="size-4" />
-            More Filters
-          </Button>
+          {/* Source channel + more filters — hidden until backend support */}
         </CardContent>
       </Card>
 
@@ -270,15 +254,7 @@ export default function InvoicesPage() {
                               View Details
                             </Link>
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Pencil className="size-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive">
-                            <Trash2 className="size-4" />
-                            Delete
-                          </DropdownMenuItem>
+                          {/* Edit/Delete — hidden until wired */}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

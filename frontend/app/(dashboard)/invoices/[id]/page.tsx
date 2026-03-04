@@ -267,11 +267,7 @@ export default function InvoiceDetailPage() {
                 <FileText className="size-4" />
                 Document Preview
               </CardTitle>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon-sm"><ZoomOut className="size-3.5" /></Button>
-                <Button variant="ghost" size="icon-sm"><ZoomIn className="size-3.5" /></Button>
-                <Button variant="ghost" size="icon-sm"><RotateCw className="size-3.5" /></Button>
-              </div>
+              {/* Zoom/rotate controls — hidden until PDF viewer is interactive */}
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -574,7 +570,7 @@ export default function InvoiceDetailPage() {
             </Avatar>
             <div className="flex-1 space-y-2">
               <Textarea
-                placeholder="Add a comment... (available when exceptions exist)"
+                placeholder="Add a comment..."
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 className="min-h-[60px]"

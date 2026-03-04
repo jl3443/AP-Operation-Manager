@@ -43,6 +43,7 @@ import { AutoApprovedCard } from "@/components/resolution/auto-approved-card"
 import { cn } from "@/lib/utils"
 import {
   useRunPipelineStream,
+  useInvoice,
   type StreamingPipelineStep,
 } from "@/hooks/use-invoices"
 import { useRerunMatch } from "@/hooks/use-exceptions"
@@ -1065,19 +1066,26 @@ export default function InvoicePipelinePage() {
   const params = useParams()
   const invoiceId = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : ""
 
+  const { data: invoice } = useInvoice(invoiceId)
   const { steps, isStreaming, error, done, start, reset } = useRunPipelineStream()
+  const hasAutoRun = React.useRef(false)
 
   const executePipeline = React.useCallback((id: string) => {
     reset()
     start(id)
   }, [start, reset])
 
-  // Auto-run on mount — runs once per page navigation.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Auto-run ONLY for fresh invoices (draft/extracted). For invoices that
+  // already went through the pipeline, show a prompt so revisiting the page
+  // doesn't re-trigger the entire pipeline.
   React.useEffect(() => {
-    if (!invoiceId) return
-    executePipeline(invoiceId)
-  }, [invoiceId]) // only re-run when invoiceId changes
+    if (!invoiceId || !invoice || hasAutoRun.current) return
+    const freshStatuses = ["draft", "extracted"]
+    if (freshStatuses.includes(invoice.status)) {
+      hasAutoRun.current = true
+      executePipeline(invoiceId)
+    }
+  }, [invoiceId, invoice, executePipeline])
 
   // Extract recommendation from the approval step
   const approvalStep = steps.find((s) => s.step === "approval_recommendation" && s.status === "complete")
@@ -1131,6 +1139,27 @@ export default function InvoicePipelinePage() {
                   Connecting to AI agents. Steps will appear one by one.
                 </p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Previously-run prompt — shown when invoice already processed and no stream active */}
+      {!isStreaming && steps.length === 0 && invoice && !["draft", "extracted"].includes(invoice.status) && (
+        <Card className="border-muted">
+          <CardContent className="py-8">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <CheckCircle2 className="size-10 text-green-500" />
+              <div>
+                <p className="font-semibold">Pipeline Previously Completed</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Invoice {invoice.invoice_number} has status <Badge variant="outline" className="mx-1">{invoice.status.replace("_", " ")}</Badge>
+                </p>
+              </div>
+              <Button size="sm" className="mt-2" onClick={() => { hasAutoRun.current = true; executePipeline(invoiceId) }}>
+                <RefreshCw className="size-3.5 mr-1.5" />
+                Re-run Pipeline
+              </Button>
             </div>
           </CardContent>
         </Card>
