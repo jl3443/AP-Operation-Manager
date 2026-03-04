@@ -21,7 +21,7 @@ import {
   Zap,
 } from "lucide-react"
 
-import { useInvoice, useMatchInvoice, useExtractInvoice } from "@/hooks/use-invoices"
+import { useInvoice, useMatchInvoice, useExtractInvoice, useApproveInvoice, useRejectInvoice } from "@/hooks/use-invoices"
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
 import { InvoiceProgressStepper } from "@/components/invoice-progress-stepper"
 import { ConfidenceIndicator } from "@/components/confidence-indicator"
@@ -52,6 +52,8 @@ export default function InvoiceDetailPage() {
   const { data: invoice, isLoading, error, refetch } = useInvoice(invoiceId)
   const matchMutation = useMatchInvoice()
   const extractMutation = useExtractInvoice()
+  const approveMutation = useApproveInvoice()
+  const rejectMutation = useRejectInvoice()
 
   if (isLoading) {
     return (
@@ -88,7 +90,8 @@ export default function InvoiceDetailPage() {
   function handleMatch() {
     matchMutation.mutate(invoiceId, {
       onSuccess: (data) => {
-        toast.success(`Match complete: ${data.match_status} (score: ${data.overall_score})`)
+        toast.success(`Match complete: ${data.match_status} (score: ${data.overall_score}%)`)
+        refetch()
       },
       onError: (err) => {
         toast.error(`Match failed: ${err.message}`)
@@ -100,9 +103,34 @@ export default function InvoiceDetailPage() {
     extractMutation.mutate(invoiceId, {
       onSuccess: () => {
         toast.success("OCR extraction complete")
+        refetch()
       },
       onError: (err) => {
         toast.error(`Extraction failed: ${err.message}`)
+      },
+    })
+  }
+
+  function handleApprove() {
+    approveMutation.mutate(invoiceId, {
+      onSuccess: () => {
+        toast.success("Invoice approved")
+        refetch()
+      },
+      onError: (err) => {
+        toast.error(`Approval failed: ${err.message}`)
+      },
+    })
+  }
+
+  function handleReject() {
+    rejectMutation.mutate(invoiceId, {
+      onSuccess: () => {
+        toast.success("Invoice rejected")
+        refetch()
+      },
+      onError: (err) => {
+        toast.error(`Rejection failed: ${err.message}`)
       },
     })
   }
@@ -155,7 +183,7 @@ export default function InvoiceDetailPage() {
               Extract
             </Button>
           )}
-          {(invoice.status === "extracted" || invoice.status === "draft") && (
+          {(invoice.status === "extracted" || invoice.status === "draft" || invoice.status === "exception") && (
             <Button
               variant="outline"
               size="sm"
@@ -170,14 +198,36 @@ export default function InvoiceDetailPage() {
               Run Match
             </Button>
           )}
-          <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
-            <XCircle className="size-4" />
-            Reject
-          </Button>
-          <Button size="sm">
-            <CheckCircle className="size-4" />
-            Approve
-          </Button>
+          {invoice.status !== "approved" && invoice.status !== "rejected" && invoice.status !== "posted" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={handleReject}
+              disabled={rejectMutation.isPending}
+            >
+              {rejectMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <XCircle className="size-4" />
+              )}
+              Reject
+            </Button>
+          )}
+          {invoice.status !== "approved" && invoice.status !== "rejected" && invoice.status !== "posted" && (
+            <Button
+              size="sm"
+              onClick={handleApprove}
+              disabled={approveMutation.isPending}
+            >
+              {approveMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle className="size-4" />
+              )}
+              Approve
+            </Button>
+          )}
         </div>
       </div>
 

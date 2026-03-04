@@ -229,6 +229,58 @@ export interface ExceptionComment {
   created_at: string
 }
 
+// ============================================================
+// V2: Resolution Plan & Automation Actions
+// ============================================================
+
+export type PlanStatus = "draft" | "approved" | "executing" | "completed" | "failed"
+
+export type AutomationLevel = "auto" | "assisted" | "manual"
+
+export type ActionStatus =
+  | "pending"
+  | "awaiting_approval"
+  | "running"
+  | "done"
+  | "failed"
+  | "skipped"
+
+export interface AutomationAction {
+  id: string
+  plan_id: string
+  step_id: string
+  action_type: string
+  params_json?: Record<string, unknown>
+  status: ActionStatus
+  requires_human_approval: boolean
+  risk?: string
+  expected_result?: string
+  result_json?: Record<string, unknown>
+  error_message?: string
+  executed_at?: string
+  approved_by?: string
+  approved_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ResolutionPlan {
+  id: string
+  exception_id: string
+  plan_json: Record<string, unknown>
+  status: PlanStatus
+  automation_level: AutomationLevel
+  confidence?: number
+  diagnosis?: string
+  recheck_strategy?: Record<string, unknown>
+  audit_evidence?: Record<string, unknown>[]
+  approved_by?: string
+  approved_at?: string
+  actions: AutomationAction[]
+  created_at: string
+  updated_at: string
+}
+
 export interface ApprovalTask {
   id: string
   invoice_id: string

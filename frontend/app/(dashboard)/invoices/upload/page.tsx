@@ -12,7 +12,6 @@ import {
   ArrowLeft,
   AlertCircle,
 } from "lucide-react"
-import { toast } from "sonner"
 
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -23,16 +22,7 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { useUploadInvoiceFile } from "@/hooks/use-invoices"
-import { useVendors } from "@/hooks/use-vendors"
 
 type FileStatus = "pending" | "uploading" | "uploaded" | "error"
 
@@ -50,10 +40,8 @@ export default function InvoiceUploadPage() {
   const router = useRouter()
   const [files, setFiles] = React.useState<UploadFile[]>([])
   const [isDragging, setIsDragging] = React.useState(false)
-  const [selectedVendorId, setSelectedVendorId] = React.useState<string>("")
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  const { data: vendorsData, isLoading: vendorsLoading } = useVendors({ page_size: 100 })
   const uploadMutation = useUploadInvoiceFile()
 
   // Auto-redirect to pipeline as soon as first file is uploaded successfully
@@ -63,8 +51,6 @@ export default function InvoiceUploadPage() {
       router.push(`/invoices/${firstUploaded.invoiceId}/pipeline`)
     }
   }, [files, router])
-
-  const vendors = vendorsData?.items ?? []
 
   function updateFile(id: string, updates: Partial<UploadFile>) {
     setFiles((prev) =>
@@ -78,7 +64,6 @@ export default function InvoiceUploadPage() {
     try {
       const invoice = await uploadMutation.mutateAsync({
         file: uploadFile.file,
-        vendorId: selectedVendorId,
       })
       updateFile(uploadFile.id, {
         status: "uploaded",
@@ -95,11 +80,6 @@ export default function InvoiceUploadPage() {
   }
 
   async function handleFiles(fileList: FileList) {
-    if (!selectedVendorId) {
-      toast.error("Please select a vendor before uploading files.")
-      return
-    }
-
     const newFiles: UploadFile[] = Array.from(fileList).map((file, i) => ({
       id: `${Date.now()}-${i}`,
       file,
@@ -140,7 +120,7 @@ export default function InvoiceUploadPage() {
     <div className="space-y-6">
       <PageHeader
         title="Upload Invoices"
-        description="Upload invoice documents for AI extraction and processing"
+        description="Upload invoice documents — AI will extract data, match the vendor, and run the full pipeline"
       >
         <Button variant="outline" size="sm" asChild>
           <Link href="/invoices">
@@ -150,49 +130,13 @@ export default function InvoiceUploadPage() {
         </Button>
       </PageHeader>
 
-      {/* Vendor Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Select Vendor</CardTitle>
-          <CardDescription>
-            Choose the vendor this invoice belongs to before uploading
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-2 max-w-sm">
-            <Label htmlFor="vendor-select">Vendor</Label>
-            <Select
-              value={selectedVendorId}
-              onValueChange={setSelectedVendorId}
-              disabled={vendorsLoading}
-            >
-              <SelectTrigger id="vendor-select" className="w-full">
-                <SelectValue
-                  placeholder={
-                    vendorsLoading ? "Loading vendors..." : "Select a vendor"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {vendors.map((vendor) => (
-                  <SelectItem key={vendor.id} value={vendor.id}>
-                    {vendor.name} ({vendor.vendor_code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Drop Zone */}
       <Card>
         <CardContent className="p-0">
           <div
             className={`
               flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed p-12
-              transition-colors
-              ${!selectedVendorId ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+              transition-colors cursor-pointer
               ${isDragging
                 ? "border-primary bg-primary/5"
                 : "border-border hover:border-primary/50 hover:bg-secondary/30"
@@ -200,25 +144,11 @@ export default function InvoiceUploadPage() {
             `}
             onDragOver={(e) => {
               e.preventDefault()
-              if (selectedVendorId) setIsDragging(true)
+              setIsDragging(true)
             }}
             onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => {
-              if (!selectedVendorId) {
-                e.preventDefault()
-                setIsDragging(false)
-                toast.error("Please select a vendor before uploading files.")
-                return
-              }
-              handleDrop(e)
-            }}
-            onClick={() => {
-              if (!selectedVendorId) {
-                toast.error("Please select a vendor before uploading files.")
-                return
-              }
-              fileInputRef.current?.click()
-            }}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
           >
             <div className="rounded-full bg-primary/10 p-4">
               <Upload className="size-8 text-primary" />
@@ -231,11 +161,6 @@ export default function InvoiceUploadPage() {
                 or click to browse files
               </p>
             </div>
-            {!selectedVendorId && (
-              <p className="text-xs text-destructive font-medium">
-                Please select a vendor above first
-              </p>
-            )}
             <p className="text-xs text-muted-foreground">
               Supported formats: PDF, PNG, JPG (max 25MB per file)
             </p>
@@ -339,4 +264,3 @@ export default function InvoiceUploadPage() {
     </div>
   )
 }
-

@@ -216,14 +216,14 @@ export default function ExceptionsPage() {
                 {items.map((exc) => {
                   const ageDays = getAgeDays(exc.created_at)
                   return (
-                    <TableRow key={exc.id} className="cursor-pointer">
+                    <TableRow key={exc.id} className="cursor-pointer group">
                       <TableCell>
                         <Link
-                          href={`/invoices/${exc.invoice_id}`}
+                          href={`/exceptions/${exc.id}`}
                           className="font-medium text-primary hover:underline flex items-center gap-1"
                         >
                           {exc.invoice_id.slice(0, 8)}...
-                          <ArrowUpRight className="size-3" />
+                          <ArrowUpRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </Link>
                       </TableCell>
                       <TableCell>

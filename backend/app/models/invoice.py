@@ -7,6 +7,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     Date,
     Enum,
     Float,
@@ -57,8 +58,8 @@ class Invoice(TimestampMixin, Base):
     )
 
     invoice_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    vendor_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=False
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True
     )
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -85,6 +86,7 @@ class Invoice(TimestampMixin, Base):
     )
     file_storage_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     ocr_confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payment_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # relationships
     vendor = relationship("Vendor", back_populates="invoices")

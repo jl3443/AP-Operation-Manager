@@ -129,4 +129,79 @@ export async function apiUpload<T>(
   return handleResponse<T>(response)
 }
 
+/**
+ * POST request that returns a ReadableStream for NDJSON parsing.
+ * Yields parsed JSON objects as they arrive line by line.
+ */
+export async function apiPostStream(
+  path: string,
+  body?: unknown,
+  onEvent?: (event: Record<string, unknown>) => void,
+): Promise<void> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  }
+
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("access_token")
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
+    }
+  }
+
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+  if (!response.ok) {
+    let detail = "An unexpected error occurred"
+    try {
+      const errorData: ApiError = await response.json()
+      detail = errorData.detail || detail
+    } catch {
+      detail = response.statusText || detail
+    }
+    throw new ApiClientError(response.status, detail)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error("No response body")
+
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split("\n")
+    // Keep the last incomplete line in buffer
+    buffer = lines.pop() || ""
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      try {
+        const parsed = JSON.parse(trimmed)
+        onEvent?.(parsed)
+      } catch {
+        // Skip malformed lines
+      }
+    }
+  }
+
+  // Process any remaining data in buffer
+  if (buffer.trim()) {
+    try {
+      const parsed = JSON.parse(buffer.trim())
+      onEvent?.(parsed)
+    } catch {
+      // Skip
+    }
+  }
+}
+
 export { ApiClientError }

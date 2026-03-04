@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
 from app.services.auto_resolution import auto_resolve_all
 from app.services.duplicate_detection import check_duplicate
@@ -16,6 +17,7 @@ from app.services.duplicate_detection import check_duplicate
 logger = logging.getLogger(__name__)
 
 
+@celery_app.task(name="run_batch_matching")
 def run_batch_matching() -> dict:
     """Process all invoices in 'extracted' status through the matching engine.
 
@@ -60,6 +62,7 @@ def run_batch_matching() -> dict:
         db.close()
 
 
+@celery_app.task(name="run_auto_resolution")
 def run_auto_resolution() -> dict:
     """Scan open exceptions and auto-resolve those within tolerance.
 
@@ -80,6 +83,7 @@ def run_auto_resolution() -> dict:
         db.close()
 
 
+@celery_app.task(name="run_duplicate_scan")
 def run_duplicate_scan() -> dict:
     """Scan recent invoices for potential duplicates.
 
@@ -131,6 +135,124 @@ def run_duplicate_scan() -> dict:
         db.close()
 
 
+@celery_app.task(name="execute_resolution_plan_auto")
+def execute_resolution_plan_auto(exception_id: str) -> dict:
+    """Auto-generate a resolution plan and execute non-approval steps.
+
+    Triggered automatically when an exception is created.
+    Flow: generate plan → auto-approve → execute until human-approval step.
+    """
+    from app.models.resolution import PlanStatus
+    from app.services import resolution_orchestrator
+
+    db = SessionLocal()
+    try:
+        import uuid as _uuid
+
+        # 1. Generate the plan
+        plan = resolution_orchestrator.plan(db, _uuid.UUID(exception_id))
+        logger.info(f"Auto-generated resolution plan for exception {exception_id}")
+
+        # 2. Auto-approve
+        plan.status = PlanStatus.approved
+        db.commit()
+        logger.info(f"Auto-approved plan {plan.id}")
+
+        # 3. Execute until blocked at human-approval step
+        result = resolution_orchestrator.execute(db, plan.id)
+        logger.info(
+            f"Auto-executed plan {plan.id}: status={result['plan_status']}, "
+            f"blocked_at={result.get('blocked_at')}"
+        )
+
+        return {
+            "exception_id": exception_id,
+            "plan_id": str(plan.id),
+            "plan_status": result["plan_status"],
+            "blocked_at": result.get("blocked_at"),
+        }
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"Auto plan generation failed for {exception_id}: {e}")
+        return {"exception_id": exception_id, "error": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="execute_resolution_plan_task")
+def execute_resolution_plan_task(plan_id: str) -> dict:
+    """Execute a resolution plan in the background.
+
+    Called after a plan is approved and the user clicks 'Execute'.
+    """
+    from app.services import resolution_orchestrator
+
+    db = SessionLocal()
+    try:
+        import uuid as _uuid
+
+        result = resolution_orchestrator.execute(db, _uuid.UUID(plan_id))
+        logger.info(f"Resolution plan {plan_id} execution: {result.get('plan_status')}")
+        return result
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Resolution plan {plan_id} execution failed: {e}")
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name="generate_resolution_plans_batch")
+def generate_resolution_plans_batch() -> dict:
+    """Generate AI resolution plans for all open exceptions that don't have one.
+
+    Intended to run on a schedule (e.g., every 30 minutes) to automatically
+    generate plans for new exceptions.
+    """
+    from app.models.exception import Exception_, ExceptionStatus
+    from app.models.resolution import ResolutionPlan
+    from app.services import resolution_orchestrator
+
+    db = SessionLocal()
+    try:
+        # Find open/assigned exceptions without a resolution plan
+        exceptions_with_plans = (
+            db.query(ResolutionPlan.exception_id).distinct()
+        )
+        open_exceptions = (
+            db.query(Exception_)
+            .filter(
+                Exception_.status.in_([
+                    ExceptionStatus.open,
+                    ExceptionStatus.assigned,
+                ]),
+                ~Exception_.id.in_(exceptions_with_plans),
+            )
+            .all()
+        )
+
+        results = {"planned": 0, "errors": []}
+        for exc in open_exceptions:
+            try:
+                resolution_orchestrator.plan(db, exc.id)
+                results["planned"] += 1
+            except Exception as e:
+                results["errors"].append(f"Exception {exc.id}: {e}")
+                logger.error(f"Plan generation failed for exception {exc.id}: {e}")
+
+        logger.info(
+            f"Batch plan generation: {results['planned']} plans created, "
+            f"{len(results['errors'])} errors"
+        )
+        return results
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name="generate_daily_report")
 def generate_daily_report() -> dict:
     """Generate a daily AP operations summary report.
 

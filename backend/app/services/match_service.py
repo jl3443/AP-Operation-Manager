@@ -59,6 +59,99 @@ def _within_tolerance(
     return pct_variance <= tol_pct or variance <= tol_abs
 
 
+def auto_link_po_lines(db: Session, invoice_id: uuid.UUID) -> dict:
+    """Automatically discover and link PO line items to invoice line items.
+
+    Called before matching to resolve PO references when OCR doesn't set po_line_id.
+    Strategy: find POs by vendor, score by amount/description/quantity similarity.
+    """
+    from difflib import SequenceMatcher
+
+    invoice = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.line_items))
+        .filter(Invoice.id == invoice_id)
+        .first()
+    )
+    if not invoice:
+        return {"linked": 0, "error": "Invoice not found"}
+
+    unlinked = [li for li in invoice.line_items if not li.po_line_id]
+    if not unlinked:
+        return {"linked": 0, "message": "All lines already linked"}
+
+    # Cannot link PO lines without a vendor
+    if not invoice.vendor_id:
+        return {"linked": 0, "message": "No vendor assigned — skipping PO linking"}
+
+    candidate_pos = (
+        db.query(PurchaseOrder)
+        .options(joinedload(PurchaseOrder.line_items))
+        .filter(PurchaseOrder.vendor_id == invoice.vendor_id)
+        .all()
+    )
+    if not candidate_pos:
+        return {"linked": 0, "message": "No POs found for this vendor"}
+
+    # Score each PO based on total amount proximity + line count
+    best_po = None
+    best_score = -1.0
+    for po in candidate_pos:
+        po_total = float(po.total_amount)
+        inv_total = float(invoice.total_amount)
+        if max(po_total, inv_total) > 0:
+            diff_ratio = abs(inv_total - po_total) / max(po_total, inv_total)
+            amount_score = max(0, 1.0 - diff_ratio)
+        else:
+            amount_score = 0.0
+        line_score = 1.0 if len(po.line_items) == len(invoice.line_items) else 0.5
+        combined = amount_score * 0.7 + line_score * 0.3
+        if combined > best_score:
+            best_score = combined
+            best_po = po
+
+    if not best_po or best_score < 0.3:
+        return {"linked": 0, "message": f"No PO match found (best score: {best_score:.2f})"}
+
+    # Match individual lines by amount + description + quantity
+    po_lines_available = list(best_po.line_items)
+    linked_count = 0
+
+    for inv_line in unlinked:
+        best_match = None
+        best_line_score = -1.0
+        for po_line in po_lines_available:
+            inv_total = float(inv_line.line_total)
+            po_total = float(po_line.line_total)
+            amt_sim = (1.0 - abs(inv_total - po_total) / max(inv_total, po_total)) if max(inv_total, po_total) > 0 else 0.0
+            desc_a = (inv_line.description or "").lower().strip()
+            desc_b = (po_line.description or "").lower().strip()
+            desc_sim = SequenceMatcher(None, desc_a, desc_b).ratio() if desc_a and desc_b else 0.0
+            inv_qty = float(inv_line.quantity)
+            po_qty = float(po_line.quantity_ordered)
+            qty_sim = (1.0 - abs(inv_qty - po_qty) / max(inv_qty, po_qty)) if max(inv_qty, po_qty) > 0 else 0.0
+            score = amt_sim * 0.4 + desc_sim * 0.3 + qty_sim * 0.3
+            if score > best_line_score:
+                best_line_score = score
+                best_match = po_line
+
+        if best_match and best_line_score >= 0.3:
+            inv_line.po_line_id = best_match.id
+            po_lines_available.remove(best_match)
+            linked_count += 1
+
+    if linked_count > 0:
+        db.commit()
+
+    return {
+        "linked": linked_count,
+        "total_lines": len(invoice.line_items),
+        "po_number": best_po.po_number,
+        "po_id": str(best_po.id),
+        "match_confidence": round(best_score, 2),
+    }
+
+
 def run_two_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
     """Compare invoice line items to PO line items (two-way match).
 

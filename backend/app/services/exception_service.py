@@ -138,6 +138,15 @@ def create_exception(
         db.commit()
         db.refresh(exc)
 
+        # Auto-generate resolution plan in background
+        try:
+            from app.tasks.invoice_tasks import execute_resolution_plan_auto
+            execute_resolution_plan_auto.delay(str(exc.id))
+        except Exception as e:
+            # Don't block exception creation if Celery is down — plan can be
+            # generated lazily when the detail page is viewed.
+            logger.warning("Could not queue auto-plan generation: %s", e)
+
     return exc
 
 
