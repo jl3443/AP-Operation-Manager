@@ -32,10 +32,12 @@ def plan(db: Session, exception_id: uuid.UUID) -> ResolutionPlan:
 
 
 def execute(db: Session, plan_id: uuid.UUID) -> dict:
-    """Execute an approved resolution plan step by step.
+    """Execute all actions in an approved resolution plan.
 
-    Stops at any step that requires human approval and has not been approved yet.
-    Returns a summary of execution progress.
+    Runs ALL actions including those marked requires_human_approval.
+    Actions that need review (emails, patches) are executed to generate
+    their results (drafts, previews) but flagged for user review.
+    The user approves the entire plan at the end before re-running match.
     """
     rp = (
         db.query(ResolutionPlan)
@@ -53,7 +55,6 @@ def execute(db: Session, plan_id: uuid.UUID) -> dict:
     db.commit()
 
     executed = []
-    blocked_at = None
 
     # Process actions in step_id order
     # Natural sort: extract numeric suffix so "S2" < "S10"
@@ -75,21 +76,9 @@ def execute(db: Session, plan_id: uuid.UUID) -> dict:
             })
             continue
 
-        # Check if human approval required but not yet given
-        if action.requires_human_approval and action.status != ActionStatus.done:
-            if not action.approved_at:
-                action.status = ActionStatus.awaiting_approval
-                db.commit()
-                blocked_at = action.step_id
-                executed.append({
-                    "step_id": action.step_id,
-                    "action_type": action.action_type,
-                    "status": "awaiting_approval",
-                    "message": "Requires human approval before execution",
-                })
-                break
-
-        # Execute the action via safe wrapper (handles missing handlers + exceptions)
+        # Execute ALL actions (including requires_human_approval ones)
+        # Actions like DRAFT_VENDOR_EMAIL generate drafts; the user
+        # approves the overall plan at the end before re-running match.
         action.status = ActionStatus.running
         db.commit()
 
@@ -143,7 +132,6 @@ def execute(db: Session, plan_id: uuid.UUID) -> dict:
         rp.status = PlanStatus.completed
     elif any_failed:
         rp.status = PlanStatus.failed
-    # else: still executing (blocked at approval step)
 
     db.commit()
 
@@ -151,7 +139,6 @@ def execute(db: Session, plan_id: uuid.UUID) -> dict:
         "plan_id": str(plan_id),
         "plan_status": rp.status.value,
         "steps_executed": executed,
-        "blocked_at": blocked_at,
         "all_complete": all_done,
     }
 

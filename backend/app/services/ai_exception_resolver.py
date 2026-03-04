@@ -245,7 +245,7 @@ def generate_resolution_plan(db: Session, exception_id: uuid.UUID) -> Resolution
     raw = ai_service.call_claude(
         system_prompt=RESOLVER_SYSTEM_PROMPT,
         user_message=context,
-        max_tokens=2048,
+        max_tokens=4096,
     )
 
     if not raw:

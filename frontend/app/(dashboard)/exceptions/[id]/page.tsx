@@ -26,7 +26,6 @@ import {
 import { ExceptionTypeBadge } from "@/components/exception-type-badge"
 import { SeverityIcon } from "@/components/severity-icon"
 import { CompactStep, friendlyActionType, summarizeResult } from "@/components/resolution/compact-step"
-import { ApprovalCheckpoint } from "@/components/resolution/approval-checkpoint"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -115,14 +114,14 @@ export default function ExceptionDetailPage() {
       })
     : []
 
-  // Find the action awaiting approval (the blocking step)
-  const blockingAction = sortedActions.find((a) => a.status === "awaiting_approval")
   const completedActions = sortedActions.filter((a) => a.status === "done" || a.status === "skipped")
-  const pendingActions = sortedActions.filter((a) => a.status === "pending")
+  const pendingActions = sortedActions.filter((a) => a.status === "pending" || a.status === "awaiting_approval")
   const failedActions = sortedActions.filter((a) => a.status === "failed")
+  const runningActions = sortedActions.filter((a) => a.status === "running")
   const doneCount = completedActions.length
   const totalSteps = sortedActions.length
   const allDone = doneCount === totalSteps && totalSteps > 0
+  const reviewActions = sortedActions.filter((a) => a.requires_human_approval && a.status === "done")
 
   const handleRefresh = () => {
     refetchPlan()
@@ -311,7 +310,7 @@ export default function ExceptionDetailPage() {
                 </div>
               )}
 
-              {/* Completed steps (collapsed) */}
+              {/* All executed steps */}
               {completedActions.length > 0 && (
                 <Card>
                   <CardContent className="py-3">
@@ -319,28 +318,19 @@ export default function ExceptionDetailPage() {
                       <CompactStep
                         key={action.id}
                         action={action}
-                        isLast={idx === completedActions.length - 1 && !blockingAction}
+                        isLast={idx === completedActions.length - 1}
                       />
                     ))}
                   </CardContent>
                 </Card>
               )}
 
-              {/* Blocking step — the main interaction */}
-              {blockingAction && (
-                <ApprovalCheckpoint
-                  action={blockingAction}
-                  exceptionId={exceptionId}
-                  onComplete={handleRefresh}
-                />
-              )}
-
-              {/* Remaining pending steps */}
-              {pendingActions.length > 0 && (
-                <Card className={blockingAction ? "opacity-50" : ""}>
+              {/* Still running / pending steps */}
+              {(runningActions.length > 0 || pendingActions.length > 0) && (
+                <Card className="opacity-60">
                   <CardContent className="py-3">
-                    {pendingActions.map((action, idx) => (
-                      <CompactStep key={action.id} action={action} isLast={idx === pendingActions.length - 1} />
+                    {[...runningActions, ...pendingActions].map((action, idx, arr) => (
+                      <CompactStep key={action.id} action={action} isLast={idx === arr.length - 1} />
                     ))}
                   </CardContent>
                 </Card>
@@ -357,14 +347,41 @@ export default function ExceptionDetailPage() {
                 </Card>
               )}
 
-              {/* All done → Re-run match */}
+              {/* Review items (actions that need human review, e.g. email drafts) */}
+              {reviewActions.length > 0 && allDone && exception.status !== "resolved" && (
+                <Card className="border-amber-200 bg-amber-50/30">
+                  <CardContent className="py-3 space-y-2">
+                    <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5">
+                      <MessageSquare className="size-3" /> Items for Review
+                    </p>
+                    {reviewActions.map((action) => {
+                      const params = (action.params_json || {}) as Record<string, string>
+                      const result = (action.result_json || {}) as Record<string, string>
+                      return (
+                        <div key={action.id} className="bg-white rounded border p-2.5 space-y-1">
+                          <p className="text-xs font-medium">{friendlyActionType(action.action_type)}</p>
+                          {params.subject && <p className="text-xs text-muted-foreground">Subject: {params.subject}</p>}
+                          {result.body && <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-line">{result.body}</p>}
+                          {result.message && <p className="text-xs text-muted-foreground">{result.message}</p>}
+                          {result.description && <p className="text-xs text-muted-foreground">{result.description}</p>}
+                          {summarizeResult(action) && !result.body && !result.message && (
+                            <p className="text-xs text-muted-foreground">{summarizeResult(action)}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* All done → Approve & Re-run match */}
               {allDone && exception.status !== "resolved" && (
                 <Card className="border-green-300 bg-green-50/50">
-                  <CardContent className="py-4 text-center space-y-3">
+                  <CardContent className="py-5 text-center space-y-3">
                     <CheckCircle2 className="size-8 mx-auto text-green-500" />
                     <div>
-                      <p className="text-sm font-medium text-green-700">All steps completed</p>
-                      <p className="text-xs text-green-600 mt-0.5">Ready to re-run matching to verify the resolution</p>
+                      <p className="text-sm font-medium text-green-700">Analysis Complete — {doneCount} steps executed</p>
+                      <p className="text-xs text-green-600 mt-0.5">Review the findings above, then approve to re-run matching</p>
                     </div>
                     <Button
                       size="sm"
@@ -372,7 +389,7 @@ export default function ExceptionDetailPage() {
                         rerunMatch.mutate(exceptionId, {
                           onSuccess: (result: Record<string, unknown>) => {
                             if (result.exception_resolved) {
-                              toast.success("Match passed! Exception resolved.")
+                              toast.success(`Match passed (score: ${result.overall_score}%)! Exception resolved.`)
                             } else {
                               toast.info(`Match: ${result.match_status} (score: ${result.overall_score}%)`)
                             }
@@ -385,7 +402,7 @@ export default function ExceptionDetailPage() {
                       className="bg-green-600 hover:bg-green-700"
                     >
                       {rerunMatch.isPending ? <Loader2 className="size-3 mr-1.5 animate-spin" /> : <RotateCcw className="size-3 mr-1.5" />}
-                      Re-Run 3-Way Match
+                      Approve & Re-Run Match
                     </Button>
                   </CardContent>
                 </Card>
