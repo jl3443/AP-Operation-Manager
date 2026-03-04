@@ -7,7 +7,7 @@ import uuid
 from datetime import date as _date, datetime
 from typing import Generator, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile, File, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -1152,7 +1152,7 @@ def _pipeline_generator(
 @router.post("/{invoice_id}/simulate-send-email")
 def simulate_send_email(
     invoice_id: uuid.UUID,
-    body: dict,
+    body: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1169,7 +1169,7 @@ def simulate_send_email(
         entity_type="invoice",
         entity_id=invoice.id,
         action="email_sent_simulated",
-        actor_type=ActorType.human,
+        actor_type=ActorType.user,
         actor_id=current_user.id,
         actor_name=current_user.name,
         evidence={"action_id": body.get("action_id"), "simulated": True},
@@ -1223,7 +1223,7 @@ def apply_corrections_endpoint(
         entity_type="invoice",
         entity_id=invoice.id,
         action="corrections_applied",
-        actor_type=ActorType.human,
+        actor_type=ActorType.user,
         actor_id=current_user.id,
         actor_name=current_user.name,
         evidence={"corrections": len(corrections), "old_total": old_total, "new_total": new_total},
