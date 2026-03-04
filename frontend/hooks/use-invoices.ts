@@ -1,4 +1,5 @@
 import * as React from "react"
+import { flushSync } from "react-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiGet, apiPost, apiPatch, apiUpload, apiPostStream } from "@/lib/api"
 import type { Invoice, PaginatedResponse, AuditLog } from "@/lib/types"
@@ -175,6 +176,8 @@ export function useApproveInvoice() {
       queryClient.invalidateQueries({ queryKey: ["invoices", "detail", invoiceId] })
       queryClient.invalidateQueries({ queryKey: ["approvals"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics"] })
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] })
     },
   })
 }
@@ -191,6 +194,8 @@ export function useRejectInvoice() {
       queryClient.invalidateQueries({ queryKey: ["invoices", "detail", invoiceId] })
       queryClient.invalidateQueries({ queryKey: ["approvals"] })
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics"] })
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] })
     },
   })
 }
@@ -228,6 +233,8 @@ export interface PipelineDone {
   total_duration_ms: number
   final_status: string
   recommendation: "approve" | "review" | "reject" | null
+  auto_approved?: boolean
+  auto_posted?: boolean
 }
 
 export function useRunPipelineStream() {
@@ -236,54 +243,69 @@ export function useRunPipelineStream() {
   const [isStreaming, setIsStreaming] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [done, setDone] = React.useState<PipelineDone | null>(null)
+  const abortRef = React.useRef<AbortController | null>(null)
 
   const start = React.useCallback((invoiceId: string) => {
+    // Abort any previous stream
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setSteps([])
     setIsStreaming(true)
     setError(null)
     setDone(null)
 
     apiPostStream(`/invoices/${invoiceId}/run-pipeline`, undefined, (event) => {
+      if (controller.signal.aborted) return
       const ev = event as Record<string, unknown>
 
+      // Use flushSync to force immediate DOM updates so each step
+      // appears progressively in the UI instead of being batched
       if (ev.event === "step_start") {
-        setSteps((prev) => [
-          ...prev,
-          {
-            step: ev.step as string,
-            label: ev.label as string,
-            status: "running",
-          },
-        ])
-      } else if (ev.event === "step_complete") {
-        setSteps((prev) => {
-          const idx = prev.findIndex((s) => s.step === ev.step)
-          if (idx >= 0) {
-            const updated = [...prev]
-            updated[idx] = {
-              step: ev.step as string,
-              label: ev.label as string,
-              agent: ev.agent as string | undefined,
-              status: ev.status as "complete" | "error",
-              duration_ms: ev.duration_ms as number | undefined,
-              output: ev.output as Record<string, unknown> | undefined,
-              error: ev.error as string | undefined,
-            }
-            return updated
-          }
-          // Step wasn't in the list yet (e.g. exception_resolution that only appears conditionally)
-          return [
+        flushSync(() => {
+          setSteps((prev) => [
             ...prev,
             {
               step: ev.step as string,
               label: ev.label as string,
-              agent: ev.agent as string | undefined,
-              status: ev.status as "complete" | "error",
-              duration_ms: ev.duration_ms as number | undefined,
-              output: ev.output as Record<string, unknown> | undefined,
-              error: ev.error as string | undefined,
+              status: "running",
             },
-          ]
+          ])
+        })
+      } else if (ev.event === "step_complete") {
+        flushSync(() => {
+          setSteps((prev) => {
+            const idx = prev.findIndex((s) => s.step === ev.step)
+            if (idx >= 0) {
+              const updated = [...prev]
+              updated[idx] = {
+                step: ev.step as string,
+                label: ev.label as string,
+                agent: ev.agent as string | undefined,
+                status: ev.status as "complete" | "error",
+                duration_ms: ev.duration_ms as number | undefined,
+                output: ev.output as Record<string, unknown> | undefined,
+                error: ev.error as string | undefined,
+              }
+              return updated
+            }
+            // Step wasn't in the list yet (e.g. exception_resolution that only appears conditionally)
+            return [
+              ...prev,
+              {
+                step: ev.step as string,
+                label: ev.label as string,
+                agent: ev.agent as string | undefined,
+                status: ev.status as "complete" | "error",
+                duration_ms: ev.duration_ms as number | undefined,
+                output: ev.output as Record<string, unknown> | undefined,
+                error: ev.error as string | undefined,
+              },
+            ]
+          })
         })
       } else if (ev.event === "pipeline_done") {
         setDone({
@@ -292,30 +314,74 @@ export function useRunPipelineStream() {
           total_duration_ms: ev.total_duration_ms as number,
           final_status: ev.final_status as string,
           recommendation: ev.recommendation as "approve" | "review" | "reject" | null,
+          auto_approved: ev.auto_approved as boolean | undefined,
+          auto_posted: ev.auto_posted as boolean | undefined,
         })
       } else if (ev.event === "error") {
         setError(ev.message as string)
       }
-    })
+    }, controller.signal)
       .then(() => {
+        if (controller.signal.aborted) return
         setIsStreaming(false)
         queryClient.invalidateQueries({ queryKey: ["invoices"] })
         queryClient.invalidateQueries({ queryKey: ["exceptions"] })
         queryClient.invalidateQueries({ queryKey: ["approvals"] })
         queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+        queryClient.invalidateQueries({ queryKey: ["analytics"] })
       })
       .catch((err) => {
+        if (controller.signal.aborted) return
         setIsStreaming(false)
         setError(err instanceof Error ? err.message : "Stream failed")
       })
   }, [queryClient])
 
   const reset = React.useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
     setSteps([])
     setIsStreaming(false)
     setError(null)
     setDone(null)
   }, [])
 
+  // Cleanup on unmount
+  React.useEffect(() => {
+    return () => {
+      if (abortRef.current) {
+        abortRef.current.abort()
+      }
+    }
+  }, [])
+
   return { steps, isStreaming, error, done, start, reset }
+}
+
+export function useSimulateSendEmail() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ invoiceId, actionId }: { invoiceId: string; actionId?: string }) =>
+      apiPost(`/invoices/${invoiceId}/simulate-send-email`, { action_id: actionId }),
+    onSuccess: (_data, { invoiceId }) => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] })
+      queryClient.invalidateQueries({ queryKey: ["invoices", "detail", invoiceId] })
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] })
+    },
+  })
+}
+
+export function useApplyCorrections() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ invoiceId }: { invoiceId: string }) =>
+      apiPost(`/invoices/${invoiceId}/apply-corrections`, {}),
+    onSuccess: (_data, { invoiceId }) => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] })
+      queryClient.invalidateQueries({ queryKey: ["invoices", "detail", invoiceId] })
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] })
+    },
+  })
 }

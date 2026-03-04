@@ -54,7 +54,7 @@ class InvoiceLineItemResponse(BaseModel):
 
 class InvoiceCreate(BaseModel):
     invoice_number: str = Field(..., min_length=1, max_length=100)
-    vendor_id: uuid.UUID
+    vendor_id: Optional[uuid.UUID] = None
     invoice_date: date
     due_date: date
     received_date: Optional[date] = None
@@ -88,7 +88,7 @@ class InvoiceUpdate(BaseModel):
 class InvoiceResponse(BaseModel):
     id: uuid.UUID
     invoice_number: str
-    vendor_id: uuid.UUID
+    vendor_id: Optional[uuid.UUID] = None
     invoice_date: date
     due_date: date
     received_date: Optional[date] = None
@@ -102,6 +102,7 @@ class InvoiceResponse(BaseModel):
     source_channel: SourceChannel
     file_storage_path: Optional[str] = None
     ocr_confidence_score: Optional[float] = None
+    posted_at: Optional[datetime] = None
     line_items: List[InvoiceLineItemResponse] = []
     created_at: datetime
     updated_at: datetime

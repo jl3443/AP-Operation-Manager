@@ -942,3 +942,159 @@ def handle_variance_breakdown(db: Session, action: AutomationAction) -> dict:
         "total_matches_computed": abs(inv_total - (inv_subtotal + inv_tax + inv_freight - inv_discount)) < 0.01,
     }
     return breakdown
+
+
+# ---------------------------------------------------------------------------
+# Scenario-specific handlers (5 demo scenarios)
+# ---------------------------------------------------------------------------
+
+
+@register("APPLY_CORRECTIONS")
+def handle_apply_corrections(db: Session, action: AutomationAction) -> dict:
+    """Apply recalculated line totals (qty * unit_price) to invoice and update total."""
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not inv:
+        return {"error": "Invoice not found"}
+
+    corrections = []
+    old_total = float(inv.total_amount)
+
+    for li in inv.line_items:
+        computed = round(float(li.quantity) * float(li.unit_price), 2)
+        current = float(li.line_total)
+        if abs(computed - current) >= 0.01:
+            corrections.append({
+                "line_number": li.line_number,
+                "description": li.description,
+                "old_total": current,
+                "new_total": computed,
+                "difference": round(computed - current, 2),
+            })
+            li.line_total = computed
+
+    # Recalculate invoice total
+    new_subtotal = sum(float(li.line_total) for li in inv.line_items)
+    new_total = round(new_subtotal + float(inv.tax_amount) + float(inv.freight_amount) - float(inv.discount_amount), 2)
+    inv.total_amount = new_total
+    db.commit()
+
+    return {
+        "corrections_applied": corrections,
+        "old_total": old_total,
+        "new_total": new_total,
+        "difference": round(new_total - old_total, 2),
+        "status": "corrections_applied",
+    }
+
+
+@register("GENERATE_CREDIT_REQUEST")
+def handle_generate_credit_request(db: Session, action: AutomationAction) -> dict:
+    """Generate a credit request for quantity overruns (invoice qty > PO qty)."""
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not inv:
+        return {"error": "Invoice not found"}
+
+    vendor = db.query(Vendor).filter(Vendor.id == inv.vendor_id).first() if inv.vendor_id else None
+    vendor_name = vendor.name if vendor else "Unknown Vendor"
+
+    overrun_lines = []
+    total_credit = 0.0
+
+    for li in inv.line_items:
+        if not li.po_line_id:
+            continue
+        po_line = db.query(POLineItem).filter(POLineItem.id == li.po_line_id).first()
+        if not po_line:
+            continue
+
+        inv_qty = float(li.quantity)
+        po_qty = float(po_line.quantity_ordered)
+        if inv_qty > po_qty:
+            excess = inv_qty - po_qty
+            credit_amount = round(excess * float(li.unit_price), 2)
+            total_credit += credit_amount
+            overrun_lines.append({
+                "line_number": li.line_number,
+                "description": li.description,
+                "invoiced_qty": inv_qty,
+                "po_qty": po_qty,
+                "excess_qty": excess,
+                "unit_price": float(li.unit_price),
+                "credit_amount": credit_amount,
+            })
+
+    # Generate narrative via Claude
+    narrative = ""
+    if overrun_lines:
+        lines_desc = "; ".join(
+            f"Line {ol['line_number']}: {ol['description']} — invoiced {ol['invoiced_qty']} vs PO {ol['po_qty']}, excess {ol['excess_qty']}"
+            for ol in overrun_lines
+        )
+        narrative = ai_service.call_claude(
+            system_prompt="You write concise credit request justifications for AP departments. 2-3 sentences.",
+            user_message=(
+                f"Write a credit request justification for invoice {inv.invoice_number} from {vendor_name}.\n"
+                f"Overrun details: {lines_desc}\n"
+                f"Total credit requested: ${total_credit:,.2f}"
+            ),
+            max_tokens=256,
+        ) or f"Credit requested for quantity overrun on invoice {inv.invoice_number}."
+
+    credit_number = f"CR-{inv.invoice_number}"
+
+    return {
+        "credit_request_number": credit_number,
+        "vendor_name": vendor_name,
+        "invoice_number": inv.invoice_number,
+        "invoice_date": str(inv.invoice_date),
+        "overrun_lines": overrun_lines,
+        "total_credit_amount": round(total_credit, 2),
+        "narrative": narrative,
+        "status": "credit_request_ready",
+    }
+
+
+@register("ADJUST_INVOICE_QUANTITIES")
+def handle_adjust_invoice_quantities(db: Session, action: AutomationAction) -> dict:
+    """Cap invoice line quantities to PO quantities and recalculate totals."""
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not inv:
+        return {"error": "Invoice not found"}
+
+    adjusted_lines = []
+    old_total = float(inv.total_amount)
+
+    for li in inv.line_items:
+        if not li.po_line_id:
+            continue
+        po_line = db.query(POLineItem).filter(POLineItem.id == li.po_line_id).first()
+        if not po_line:
+            continue
+
+        inv_qty = float(li.quantity)
+        po_qty = float(po_line.quantity_ordered)
+        if inv_qty > po_qty:
+            old_line_total = float(li.line_total)
+            li.quantity = po_qty
+            li.line_total = round(po_qty * float(li.unit_price), 2)
+            adjusted_lines.append({
+                "line_number": li.line_number,
+                "description": li.description,
+                "old_qty": inv_qty,
+                "new_qty": po_qty,
+                "old_line_total": old_line_total,
+                "new_line_total": float(li.line_total),
+            })
+
+    # Recalculate invoice total
+    new_subtotal = sum(float(li.line_total) for li in inv.line_items)
+    new_total = round(new_subtotal + float(inv.tax_amount) + float(inv.freight_amount) - float(inv.discount_amount), 2)
+    inv.total_amount = new_total
+    db.commit()
+
+    return {
+        "adjusted_lines": adjusted_lines,
+        "old_invoice_total": old_total,
+        "new_invoice_total": new_total,
+        "status": "quantities_adjusted",
+    }

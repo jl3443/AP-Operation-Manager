@@ -50,6 +50,9 @@ const ACTION_LABELS: Record<string, string> = {
   CREATE_WAIT_TIMER: "Set Follow-up Timer",
   WAIT_FOR_REPLY: "Waiting for Reply",
   SUMMARIZE_FINDINGS: "Summarize Findings",
+  APPLY_CORRECTIONS: "Apply Line Total Corrections",
+  GENERATE_CREDIT_REQUEST: "Generate Credit Request",
+  ADJUST_INVOICE_QUANTITIES: "Adjust Invoice Quantities",
 }
 
 export function friendlyActionType(type: string): string {
@@ -80,6 +83,9 @@ export function summarizeResult(action: AutomationAction): string | null {
   if (r.task_created) return `Task created: ${r.description}`
   if (r.reassigned) return `Reassigned to ${r.queue}`
   if (r.patched) return `Fields updated: ${Object.keys(r.patched).join(", ")}`
+  if (r.corrections_applied) return `${(r.corrections_applied as unknown[]).length} line(s) corrected. New total: $${r.new_total}`
+  if (r.credit_request_number) return `Credit request ${r.credit_request_number} — $${Number(r.total_credit_amount).toLocaleString()}`
+  if (r.adjusted_lines) return `${(r.adjusted_lines as unknown[]).length} line(s) adjusted to PO qty`
   if (r.message) return String(r.message)
   if (r.status) return `Status: ${r.status}`
   if (r.note) return String(r.note)

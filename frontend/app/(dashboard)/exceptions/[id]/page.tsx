@@ -23,6 +23,7 @@ import {
   useGenerateResolutionPlan,
   useRerunMatch,
 } from "@/hooks/use-exceptions"
+import { useApproveInvoice, useRejectInvoice } from "@/hooks/use-invoices"
 import { ExceptionTypeBadge } from "@/components/exception-type-badge"
 import { SeverityIcon } from "@/components/severity-icon"
 import { CompactStep, friendlyActionType, summarizeResult } from "@/components/resolution/compact-step"
@@ -73,6 +74,9 @@ export default function ExceptionDetailPage() {
 
   const generatePlan = useGenerateResolutionPlan()
   const rerunMatch = useRerunMatch()
+  const approveInvoice = useApproveInvoice()
+  const rejectInvoice = useRejectInvoice()
+  const [matchResult, setMatchResult] = React.useState<Record<string, unknown> | null>(null)
 
   // Auto-generate plan if none exists
   React.useEffect(() => {
@@ -375,7 +379,7 @@ export default function ExceptionDetailPage() {
               )}
 
               {/* All done → Approve & Re-run match */}
-              {allDone && exception.status !== "resolved" && (
+              {allDone && exception.status !== "resolved" && !matchResult && (
                 <Card className="border-green-300 bg-green-50/50">
                   <CardContent className="py-5 text-center space-y-3">
                     <CheckCircle2 className="size-8 mx-auto text-green-500" />
@@ -388,11 +392,7 @@ export default function ExceptionDetailPage() {
                       onClick={() => {
                         rerunMatch.mutate(exceptionId, {
                           onSuccess: (result: Record<string, unknown>) => {
-                            if (result.exception_resolved) {
-                              toast.success(`Match passed (score: ${result.overall_score}%)! Exception resolved.`)
-                            } else {
-                              toast.info(`Match: ${result.match_status} (score: ${result.overall_score}%)`)
-                            }
+                            setMatchResult(result)
                             handleRefresh()
                           },
                           onError: (err) => toast.error(String(err)),
@@ -408,20 +408,93 @@ export default function ExceptionDetailPage() {
                 </Card>
               )}
 
-              {/* Resolved state */}
-              {exception.status === "resolved" && (
-                <Card className="border-green-300 bg-green-50/50">
-                  <CardContent className="py-4 text-center space-y-2">
-                    <CheckCircle2 className="size-10 mx-auto text-green-500" />
-                    <p className="text-sm font-medium text-green-700">Exception Resolved</p>
-                    {exception.resolution_notes && (
-                      <p className="text-xs text-green-600">{exception.resolution_notes}</p>
-                    )}
-                    <Link href={`/invoices/${exception.invoice_id}`}>
-                      <Button size="sm" variant="outline" className="mt-2">
-                        <FileText className="size-3 mr-1.5" /> View Invoice for Approval
+              {/* Match result → Accept / Reject */}
+              {matchResult && !matchResult.exception_resolved && exception.status !== "resolved" && (
+                <Card className="border-amber-300 bg-amber-50/50">
+                  <CardContent className="py-5 text-center space-y-3">
+                    <XCircle className="size-8 mx-auto text-amber-500" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-700">
+                        Match: {String(matchResult.match_status).replace("_", " ")} (score: {String(matchResult.overall_score)}%)
+                      </p>
+                      <p className="text-xs text-amber-600 mt-0.5">Exception remains open — variance still present</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          rejectInvoice.mutate(exception.invoice_id, {
+                            onSuccess: () => { toast.success("Invoice rejected"); handleRefresh() },
+                            onError: (err) => toast.error(String(err)),
+                          })
+                        }}
+                        disabled={rejectInvoice.isPending}
+                        className="border-red-300 text-red-600 hover:bg-red-50"
+                      >
+                        <XCircle className="size-3 mr-1.5" /> Reject Invoice
                       </Button>
-                    </Link>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          approveInvoice.mutate(exception.invoice_id, {
+                            onSuccess: () => { toast.success("Invoice approved for payment"); handleRefresh() },
+                            onError: (err) => toast.error(String(err)),
+                          })
+                        }}
+                        disabled={approveInvoice.isPending}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <CheckCircle2 className="size-3 mr-1.5" /> Accept & Approve
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Resolved state — match passed */}
+              {(exception.status === "resolved" || matchResult?.exception_resolved) && (
+                <Card className="border-green-300 bg-green-50/50">
+                  <CardContent className="py-5 text-center space-y-3">
+                    <CheckCircle2 className="size-10 mx-auto text-green-500" />
+                    <div>
+                      <p className="text-sm font-medium text-green-700">Exception Resolved</p>
+                      {exception.resolution_notes && (
+                        <p className="text-xs text-green-600">{exception.resolution_notes}</p>
+                      )}
+                      {matchResult?.overall_score && (
+                        <p className="text-xs text-green-600">Match score: {String(matchResult.overall_score)}%</p>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-center gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          rejectInvoice.mutate(exception.invoice_id, {
+                            onSuccess: () => { toast.success("Invoice rejected"); handleRefresh() },
+                            onError: (err) => toast.error(String(err)),
+                          })
+                        }}
+                        disabled={rejectInvoice.isPending}
+                        className="border-red-300 text-red-600 hover:bg-red-50"
+                      >
+                        <XCircle className="size-3 mr-1.5" /> Reject
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          approveInvoice.mutate(exception.invoice_id, {
+                            onSuccess: () => { toast.success("Invoice approved for payment"); handleRefresh() },
+                            onError: (err) => toast.error(String(err)),
+                          })
+                        }}
+                        disabled={approveInvoice.isPending}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <CheckCircle2 className="size-3 mr-1.5" /> Accept & Approve
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               )}

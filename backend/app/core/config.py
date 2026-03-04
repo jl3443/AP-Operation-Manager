@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     OCR_ENDPOINT: str = "http://localhost:8080/ocr"
 
     # ── CORS ─────────────────────────────────────────────────────────────
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173"]
 
     # ── App metadata ─────────────────────────────────────────────────────
     APP_NAME: str = "AP Digital Ops Manager"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date as _date
+from datetime import date as _date, datetime
 from typing import Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
@@ -400,9 +400,30 @@ def approve_invoice(
         actor_id=current_user.id,
         actor_name=current_user.name,
     )
+
+    # Auto-post: transition approved → posted immediately
+    from datetime import datetime, timezone
+
+    invoice.status = InvoiceStatus.posted
+    invoice.posted_at = datetime.now(timezone.utc)
+
+    audit_service.log_action(
+        db,
+        entity_type="invoice",
+        entity_id=invoice.id,
+        action="posted",
+        actor_type=ActorType.system,
+        actor_id=current_user.id,
+        actor_name="Auto-Post",
+    )
     db.commit()
 
-    return {"message": "Invoice approved", "status": "approved", "invoice_id": str(invoice_id)}
+    return {
+        "message": "Invoice approved and posted to ledger",
+        "status": "posted",
+        "invoice_id": str(invoice_id),
+        "posted_at": invoice.posted_at.isoformat(),
+    }
 
 
 @router.post("/{invoice_id}/reject")
@@ -587,6 +608,30 @@ def _pipeline_generator(
 
     pipeline_start = time.time()
     extracted = {}
+
+    # ── Cleanup: resolve any stale open exceptions from a previous pipeline run ──
+    from app.models.exception import ExceptionStatus
+    stale = (
+        db.query(Exception_)
+        .filter(
+            Exception_.invoice_id == invoice.id,
+            Exception_.status.in_([
+                ExceptionStatus.open,
+                ExceptionStatus.assigned,
+                ExceptionStatus.in_progress,
+            ]),
+        )
+        .all()
+    )
+    if stale:
+        from datetime import timezone as _tz2
+        from app.models.exception import ResolutionType
+        for s in stale:
+            s.status = ExceptionStatus.resolved
+            s.resolution_type = ResolutionType.auto_resolved
+            s.resolution_notes = "Auto-resolved on pipeline rerun"
+            s.resolved_at = datetime.now(_tz2.utc)
+        db.commit()
 
     # ── Step 1: OCR Extraction ────────────────────────────────────────────────
     yield _ndjson_line({"event": "step_start", "step": "ocr_extraction", "label": "OCR Extraction"})
@@ -886,6 +931,69 @@ def _pipeline_generator(
             "output": {},
         })
 
+    # ── Clean match → auto-approve + auto-post (skip Steps 5 & 6) ────────────
+    match_status_val = match_result.match_status.value if match_result else None
+    if exc_count == 0 and match_status_val in ("matched", "tolerance_passed"):
+        # Auto-approve & auto-post the invoice
+        from datetime import timezone as _tz
+        invoice.status = InvoiceStatus.posted
+        invoice.posted_at = datetime.now(_tz.utc)
+        db.commit()
+
+        audit_service.log_action(
+            db,
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="auto_approved_posted",
+            actor_type=ActorType.ai_agent,
+            actor_name="AP Pipeline Agent",
+            evidence={"match_status": match_status_val, "overall_score": match_result.overall_score},
+        )
+        db.commit()
+
+        # Emit recommendation step as auto-approved
+        yield _ndjson_line({"event": "step_start", "step": "approval_recommendation", "label": "Approval Recommendation"})
+        yield _ndjson_line({
+            "event": "step_complete",
+            "step": "approval_recommendation",
+            "label": "Approval Recommendation",
+            "agent": "AP Pipeline Agent (auto)",
+            "status": "complete",
+            "duration_ms": 0,
+            "output": {
+                "recommendation": "approve",
+                "reasoning": f"Clean {match_status_val} with score {match_result.overall_score}%. No exceptions. Auto-approved and posted.",
+                "risk_factors": [],
+                "auto_approved": True,
+                "auto_posted": True,
+                "posted_at": invoice.posted_at.isoformat(),
+            },
+        })
+
+        # Pipeline done
+        audit_service.log_action(
+            db,
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="pipeline_executed",
+            actor_type=ActorType.ai_agent,
+            actor_name="AP Pipeline Agent",
+            evidence={"total_ms": int((time.time() - pipeline_start) * 1000)},
+        )
+        db.commit()
+
+        yield _ndjson_line({
+            "event": "pipeline_done",
+            "invoice_id": str(invoice_id),
+            "invoice_number": invoice.invoice_number,
+            "total_duration_ms": int((time.time() - pipeline_start) * 1000),
+            "final_status": "posted",
+            "recommendation": "approve",
+            "auto_approved": True,
+            "auto_posted": True,
+        })
+        return
+
     # ── Step 5: Exception Resolution (if exceptions exist) ───────────────────
     if exc_count > 0:
         yield _ndjson_line({"event": "step_start", "step": "exception_resolution", "label": "AI Exception Resolution"})
@@ -1041,6 +1149,95 @@ def _pipeline_generator(
     })
 
 
+@router.post("/{invoice_id}/simulate-send-email")
+def simulate_send_email(
+    invoice_id: uuid.UUID,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Simulate sending a vendor email. Sets invoice status to pending_approval (awaiting vendor)."""
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    invoice.status = InvoiceStatus.pending_approval
+    db.commit()
+
+    audit_service.log_action(
+        db,
+        entity_type="invoice",
+        entity_id=invoice.id,
+        action="email_sent_simulated",
+        actor_type=ActorType.human,
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        evidence={"action_id": body.get("action_id"), "simulated": True},
+    )
+    db.commit()
+
+    return {
+        "message": "Email sent (simulated)",
+        "invoice_status": "pending_approval",
+        "invoice_id": str(invoice_id),
+        "simulated": True,
+    }
+
+
+@router.post("/{invoice_id}/apply-corrections")
+def apply_corrections_endpoint(
+    invoice_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Recalculate all line totals from qty*unit_price and update invoice total."""
+    from sqlalchemy.orm import joinedload as _jl
+
+    invoice = db.query(Invoice).options(_jl(Invoice.line_items)).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    corrections = []
+    old_total = float(invoice.total_amount)
+
+    for li in invoice.line_items:
+        computed = round(float(li.quantity) * float(li.unit_price), 2)
+        current = float(li.line_total)
+        if abs(computed - current) >= 0.01:
+            corrections.append({
+                "line_number": li.line_number,
+                "description": li.description,
+                "old_total": current,
+                "new_total": computed,
+                "difference": round(computed - current, 2),
+            })
+            li.line_total = computed
+
+    new_subtotal = sum(float(li.line_total) for li in invoice.line_items)
+    new_total = round(new_subtotal + float(invoice.tax_amount) + float(invoice.freight_amount) - float(invoice.discount_amount), 2)
+    invoice.total_amount = new_total
+    db.commit()
+
+    audit_service.log_action(
+        db,
+        entity_type="invoice",
+        entity_id=invoice.id,
+        action="corrections_applied",
+        actor_type=ActorType.human,
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        evidence={"corrections": len(corrections), "old_total": old_total, "new_total": new_total},
+    )
+    db.commit()
+
+    return {
+        "corrections": corrections,
+        "old_total": old_total,
+        "new_total": new_total,
+        "difference": round(new_total - old_total, 2),
+    }
+
+
 @router.post("/{invoice_id}/run-pipeline")
 def run_invoice_pipeline(
     invoice_id: uuid.UUID,
@@ -1060,4 +1257,9 @@ def run_invoice_pipeline(
     return StreamingResponse(
         _pipeline_generator(invoice_id, db, current_user),
         media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )

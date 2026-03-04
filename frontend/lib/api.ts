@@ -2,6 +2,13 @@ import type { ApiError } from "./types"
 
 const BASE_URL = "/api/v1"
 
+// Direct backend URL for streaming endpoints (bypasses Next.js rewrite proxy which buffers responses)
+const STREAM_BASE_URL = (
+  typeof window !== "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL || window.location.origin
+    : process.env.NEXT_PUBLIC_API_URL || ""
+) + "/api/v1"
+
 class ApiClientError extends Error {
   status: number
   detail: string
@@ -137,6 +144,7 @@ export async function apiPostStream(
   path: string,
   body?: unknown,
   onEvent?: (event: Record<string, unknown>) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -149,10 +157,12 @@ export async function apiPostStream(
     }
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
+  // Use direct backend URL to bypass Next.js rewrite proxy (which buffers streaming responses)
+  const response = await fetch(`${STREAM_BASE_URL}${path}`, {
     method: "POST",
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   })
 
   if (!response.ok) {

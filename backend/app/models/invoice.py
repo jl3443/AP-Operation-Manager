@@ -87,6 +87,7 @@ class Invoice(TimestampMixin, Base):
     file_storage_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     ocr_confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     payment_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    posted_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     # relationships
     vendor = relationship("Vendor", back_populates="invoices")

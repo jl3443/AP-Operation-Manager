@@ -36,6 +36,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { CompactStep } from "@/components/resolution/compact-step"
 import { ApprovalCheckpoint } from "@/components/resolution/approval-checkpoint"
+import { EmailDraftCard } from "@/components/resolution/email-draft-card"
+import { RecalculationCard } from "@/components/resolution/recalculation-card"
+import { CreditRequestCard } from "@/components/resolution/credit-request-card"
+import { AutoApprovedCard } from "@/components/resolution/auto-approved-card"
 import { cn } from "@/lib/utils"
 import {
   useRunPipelineStream,
@@ -84,7 +88,7 @@ function ScoreGauge({ score, size = 80 }: { score: number; size?: number }) {
 
 function HorizontalStepper({ steps }: { steps: StreamingPipelineStep[] }) {
   return (
-    <div className="flex items-center gap-1 w-full">
+    <div className="flex items-center gap-1 overflow-x-auto pb-1">
       {steps.map((step, i) => {
         const cfg = STEP_CONFIG[step.step] || { icon: <Zap className="size-4" />, color: "text-primary", label: step.label }
         const isComplete = step.status === "complete"
@@ -93,21 +97,21 @@ function HorizontalStepper({ steps }: { steps: StreamingPipelineStep[] }) {
 
         return (
           <React.Fragment key={step.step}>
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all bg-card border shadow-sm ${
+            <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all bg-card border shadow-sm shrink-0 ${
               isRunning ? "ring-2 ring-primary/30" : ""
             }`}>
-              <div className={`flex items-center justify-center size-7 rounded-full border-2 transition-colors ${
+              <div className={`flex items-center justify-center size-6 rounded-full border-2 transition-colors shrink-0 ${
                 isError ? "border-red-500 bg-red-50 dark:bg-red-950" :
                 isComplete ? "border-green-500 bg-green-50 dark:bg-green-950" :
                 isRunning ? "border-primary bg-primary/10" : "border-muted-foreground/30"
               }`}>
-                {isError ? <X className="size-3.5 text-red-500" /> :
-                 isComplete ? <Check className="size-3.5 text-green-600" /> :
-                 isRunning ? <Loader2 className="size-3.5 text-primary animate-spin" /> :
-                 <span className="text-xs font-medium text-muted-foreground">{i + 1}</span>}
+                {isError ? <X className="size-3 text-red-500" /> :
+                 isComplete ? <Check className="size-3 text-green-600" /> :
+                 isRunning ? <Loader2 className="size-3 text-primary animate-spin" /> :
+                 <span className="text-[10px] font-medium text-muted-foreground">{i + 1}</span>}
               </div>
-              <div className="hidden sm:block">
-                <p className="text-xs font-medium leading-none">{cfg.label}</p>
+              <div>
+                <p className="text-[11px] font-medium leading-none whitespace-nowrap">{cfg.label}</p>
                 {step.duration_ms != null && (
                   <p className="text-[10px] text-muted-foreground mt-0.5">
                     {step.duration_ms < 1000 ? `${step.duration_ms}ms` : `${(step.duration_ms / 1000).toFixed(1)}s`}
@@ -119,7 +123,7 @@ function HorizontalStepper({ steps }: { steps: StreamingPipelineStep[] }) {
               </div>
             </div>
             {i < steps.length - 1 && (
-              <div className={`flex-1 h-0.5 min-w-4 rounded transition-colors ${
+              <div className={`h-0.5 min-w-3 w-3 rounded transition-colors shrink-0 ${
                 isError ? "bg-red-300" : isComplete ? "bg-green-400" : "bg-muted"
               }`} />
             )}
@@ -312,9 +316,13 @@ function MatchVisualization({ output }: { output: Record<string, unknown> }) {
 function ExceptionResolutionCard({
   output,
   onRefresh,
+  invoiceId,
+  onRerunPipeline,
 }: {
   output: Record<string, unknown>
   onRefresh: () => void
+  invoiceId?: string
+  onRerunPipeline?: () => void
 }) {
   const plans = (output.plans as Array<Record<string, unknown>>) || []
   const rerunMatch = useRerunMatch()
@@ -405,16 +413,58 @@ function ExceptionResolutionCard({
                 </div>
               )}
 
-              {/* Completed steps */}
+              {/* Completed steps — render rich cards for key action types */}
               {completedActions.length > 0 && (
-                <div className="pt-1">
-                  {completedActions.map((action, idx) => (
-                    <CompactStep
-                      key={action.id}
-                      action={action}
-                      isLast={idx === completedActions.length - 1 && !blockingAction}
-                    />
-                  ))}
+                <div className="pt-1 space-y-2">
+                  {completedActions.map((action, idx) => {
+                    // Rich card: Email Draft
+                    if (action.action_type === "DRAFT_VENDOR_EMAIL" && action.result_json?.body && invoiceId) {
+                      return (
+                        <EmailDraftCard
+                          key={action.id}
+                          action={action}
+                          invoiceId={invoiceId}
+                          onSent={onRefresh}
+                        />
+                      )
+                    }
+                    // Rich card: Recalculation (absorb RECALCULATE_INVOICE_TOTAL too)
+                    if (action.action_type === "RECALC_LINE_TOTALS" && invoiceId) {
+                      const totalAction = completedActions.find((a) => a.action_type === "RECALCULATE_INVOICE_TOTAL")
+                      return (
+                        <RecalculationCard
+                          key={action.id}
+                          lineRecalcAction={action}
+                          totalRecalcAction={totalAction}
+                          invoiceId={invoiceId}
+                          onAccepted={onRefresh}
+                        />
+                      )
+                    }
+                    // Skip RECALCULATE_INVOICE_TOTAL if already shown in RecalculationCard
+                    if (action.action_type === "RECALCULATE_INVOICE_TOTAL" && completedActions.some((a) => a.action_type === "RECALC_LINE_TOTALS")) {
+                      return null
+                    }
+                    // Rich card: Credit Request
+                    if (action.action_type === "GENERATE_CREDIT_REQUEST" && invoiceId) {
+                      return (
+                        <CreditRequestCard
+                          key={action.id}
+                          action={action}
+                          invoiceId={invoiceId}
+                          onApproved={onRefresh}
+                        />
+                      )
+                    }
+                    // Default: compact step
+                    return (
+                      <CompactStep
+                        key={action.id}
+                        action={action}
+                        isLast={idx === completedActions.length - 1 && !blockingAction}
+                      />
+                    )
+                  })}
                 </div>
               )}
 
@@ -463,31 +513,42 @@ function ExceptionResolutionCard({
                 </Link>
               </div>
 
-              {/* All done → Re-run match */}
+              {/* All done → Rerun Pipeline */}
               {allDone && (
                 <div className="text-center space-y-2 py-2">
                   <p className="text-xs text-green-600 font-medium">All resolution steps completed</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      rerunMatch.mutate(planData.exception_id as string, {
-                        onSuccess: (result: Record<string, unknown>) => {
-                          if (result.exception_resolved) {
-                            toast.success("Match passed! Exception resolved.")
-                          } else {
-                            toast.info(`Match: ${result.match_status} (score: ${result.overall_score}%)`)
-                          }
-                          onRefresh()
-                        },
-                        onError: (err) => toast.error(String(err)),
-                      })
-                    }}
-                    disabled={rerunMatch.isPending}
-                  >
-                    {rerunMatch.isPending ? <Loader2 className="size-3 mr-1.5 animate-spin" /> : <RotateCcw className="size-3 mr-1.5" />}
-                    Re-Run 3-Way Match
-                  </Button>
+                  {onRerunPipeline ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={onRerunPipeline}
+                    >
+                      <RotateCcw className="size-3 mr-1.5" />
+                      Rerun Pipeline
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        rerunMatch.mutate(planData.exception_id as string, {
+                          onSuccess: (result: Record<string, unknown>) => {
+                            if (result.exception_resolved) {
+                              toast.success("Match passed! Exception resolved.")
+                            } else {
+                              toast.info(`Match: ${result.match_status} (score: ${result.overall_score}%)`)
+                            }
+                            onRefresh()
+                          },
+                          onError: (err) => toast.error(String(err)),
+                        })
+                      }}
+                      disabled={rerunMatch.isPending}
+                    >
+                      {rerunMatch.isPending ? <Loader2 className="size-3 mr-1.5 animate-spin" /> : <RotateCcw className="size-3 mr-1.5" />}
+                      Re-Run 3-Way Match
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -519,21 +580,249 @@ function JsonBlock({ data, expanded }: { data: Record<string, unknown>; expanded
   )
 }
 
+// ── Classification Visualization ────────────────────────────────────────────
+
+function ClassificationVisualization({ output }: { output: Record<string, unknown> }) {
+  const [tab, setTab] = React.useState<"summary" | "recommendations" | "raw">("summary")
+  const docType = output.document_type as string || "unknown"
+  const confidence = output.classification_confidence as number || 0
+  const qualityScore = output.quality_score as number || 0
+  const validationPassed = output.validation_passed as boolean
+  const needsHumanReview = output.needs_human_review as boolean
+  const issues = (output.validation_issues as Array<{ field: string; issue: string; severity: string }>) || []
+  const fieldConfidence = output.field_confidence as Record<string, string> | undefined
+  const recommendations = (output.recommendations as string[]) || []
+  const reviewReasons = (output.review_reasons as string[]) || []
+  const reasoning = output.classification_reasoning as string || ""
+
+  const confidenceColor = (c: string) =>
+    c === "high" ? "text-green-600 bg-green-50 dark:bg-green-950" :
+    c === "medium" ? "text-amber-600 bg-amber-50 dark:bg-amber-950" :
+    "text-red-600 bg-red-50 dark:bg-red-950"
+
+  return (
+    <div className="space-y-3">
+      {/* Tab buttons */}
+      <div className="flex gap-1 border-b">
+        {(["summary", "recommendations", "raw"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={cn("px-3 py-1.5 text-xs font-medium border-b-2 transition-colors capitalize",
+              tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+            )}>
+            {t === "recommendations" ? `Recommendations (${recommendations.length})` : t}
+          </button>
+        ))}
+      </div>
+
+      {tab === "summary" && (
+        <div className="space-y-3">
+          {/* Classification result */}
+          <div className="flex items-center gap-4">
+            <ScoreGauge score={qualityScore * 100} size={64} />
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant="outline" className="text-xs capitalize">{docType.replace("_", " ")}</Badge>
+                <span className="text-xs text-muted-foreground">
+                  {Math.round(confidence * 100)}% confidence
+                </span>
+                {validationPassed ? (
+                  <Badge className="bg-green-100 text-green-700 text-[10px]">Validation Passed</Badge>
+                ) : (
+                  <Badge className="bg-red-100 text-red-700 text-[10px]">Validation Issues</Badge>
+                )}
+              </div>
+              {reasoning && <p className="text-xs text-muted-foreground leading-relaxed">{reasoning}</p>}
+            </div>
+          </div>
+
+          {/* Field confidence */}
+          {fieldConfidence && (
+            <div className="grid grid-cols-5 gap-1.5">
+              {Object.entries(fieldConfidence).map(([field, level]) => (
+                <div key={field} className={cn("text-center px-2 py-1.5 rounded text-[10px] font-medium", confidenceColor(level))}>
+                  <div className="capitalize">{field.replace("_", " ")}</div>
+                  <div className="text-[9px] opacity-70 capitalize">{level}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Validation issues */}
+          {issues.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Validation Issues</p>
+              {issues.map((issue, i) => (
+                <div key={i} className={cn("flex items-start gap-1.5 text-xs rounded px-2 py-1",
+                  issue.severity === "error" ? "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300" :
+                  issue.severity === "warning" ? "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" :
+                  "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                )}>
+                  <AlertTriangle className="size-3 shrink-0 mt-0.5" />
+                  <span><strong>{issue.field}:</strong> {issue.issue}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Needs human review */}
+          {needsHumanReview && reviewReasons.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">Needs Human Review</p>
+              <ul className="text-xs text-amber-600 dark:text-amber-400 space-y-0.5">
+                {reviewReasons.map((r, i) => <li key={i} className="flex items-start gap-1"><span>-</span>{r}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "recommendations" && (
+        <div className="space-y-2">
+          {recommendations.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No recommendations.</p>
+          ) : (
+            recommendations.map((rec, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm bg-violet-50 dark:bg-violet-950/30 rounded-lg px-3 py-2">
+                <Sparkles className="size-3.5 text-violet-500 mt-0.5 shrink-0" />
+                <span className="text-violet-900 dark:text-violet-200">{rec}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === "raw" && (
+        <JsonBlock data={output} expanded={true} />
+      )}
+    </div>
+  )
+}
+
+// ── OCR Visualization ────────────────────────────────────────────────────────
+
+function OcrVisualization({ output }: { output: Record<string, unknown> }) {
+  const confidence = (output.confidence as number) || 0
+  const method = (output.extraction_method as string) || "unknown"
+  const fields = output.extracted_fields as Record<string, unknown> | undefined
+  const lineItems = (output.line_items_count as number) || 0
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-4">
+        <ScoreGauge score={confidence * 100} size={64} />
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-semibold">
+              {confidence >= 0.9 ? "High Confidence" : confidence >= 0.7 ? "Medium Confidence" : "Low Confidence"}
+            </span>
+            <Badge variant="outline" className="text-xs">{method}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {lineItems} line item(s) extracted
+          </p>
+        </div>
+      </div>
+
+      {fields && Object.keys(fields).length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          {Object.entries(fields).map(([key, value]) => (
+            <div key={key} className="bg-muted/40 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{key.replace(/_/g, " ")}</p>
+              <p className="text-sm font-medium truncate">{value != null ? String(value) : "—"}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Vendor Match Visualization ───────────────────────────────────────────────
+
+// ---------------------------------------------------------------------------
+// Approval Recommendation — formatted view (replaces raw JSON)
+// ---------------------------------------------------------------------------
+
+function ApprovalRecommendationView({ output }: { output: Record<string, unknown> }) {
+  const recommendation = (output.recommendation as string) || "review"
+  const reasoning = (output.reasoning as string) || ""
+  const riskFactors = (output.risk_factors as string[]) || []
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">{reasoning}</p>
+      {riskFactors.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Risk factors:</p>
+          {riskFactors.map((rf, i) => (
+            <div key={i} className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+              <span>{rf}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VendorMatchVisualization({ output }: { output: Record<string, unknown> }) {
+  const vendorName = (output.vendor_name as string) || "Unknown"
+  const method = (output.method as string) || "unknown"
+  const confidence = (output.confidence as number) || 0
+  const vendorId = output.vendor_id as string | undefined
+
+  const methodLabel: Record<string, string> = {
+    pre_assigned: "Pre-assigned",
+    tax_id: "Tax ID Match",
+    name_match: "Name Match",
+    fuzzy: "Fuzzy Match",
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      <div className={cn(
+        "size-12 rounded-full flex items-center justify-center text-lg font-bold",
+        confidence >= 0.9 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+        confidence >= 0.7 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+        "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+      )}>
+        {vendorName.charAt(0).toUpperCase()}
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-semibold">{vendorName}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <Badge variant="outline" className="text-xs">{methodLabel[method] || method}</Badge>
+          <span className="text-xs text-muted-foreground">
+            {Math.round(confidence * 100)}% confidence
+          </span>
+        </div>
+      </div>
+      {confidence >= 0.9 && <CheckCircle2 className="size-5 text-green-500 shrink-0" />}
+    </div>
+  )
+}
+
 // ── Individual step card ─────────────────────────────────────────────────────
 
 function StepCard({
   step,
   index,
   onRefresh,
+  invoiceId,
+  onRerunPipeline,
 }: {
   step: StreamingPipelineStep
   index: number
   onRefresh: () => void
+  invoiceId?: string
+  onRerunPipeline?: () => void
 }) {
   const [expanded, setExpanded] = React.useState(step.step === "three_way_match")
   const cfg = STEP_CONFIG[step.step] || { icon: <Zap className="size-4" />, color: "text-primary", label: step.label }
   const isMatchStep = step.step === "three_way_match"
   const isExceptionStep = step.step === "exception_resolution"
+  const isClassificationStep = step.step === "classification"
   const isRunning = step.status === "running"
 
   return (
@@ -611,7 +900,22 @@ function StepCard({
           {isMatchStep ? (
             <MatchVisualization output={step.output} />
           ) : isExceptionStep ? (
-            <ExceptionResolutionCard output={step.output} onRefresh={onRefresh} />
+            <ExceptionResolutionCard output={step.output} onRefresh={onRefresh} invoiceId={invoiceId} onRerunPipeline={onRerunPipeline} />
+          ) : step.step === "ocr_extraction" ? (
+            <OcrVisualization output={step.output} />
+          ) : step.step === "vendor_match" ? (
+            <VendorMatchVisualization output={step.output} />
+          ) : isClassificationStep ? (
+            <ClassificationVisualization output={step.output} />
+          ) : step.step === "approval_recommendation" && step.output.auto_approved ? (
+            /* Auto-approved — skip card body; AutoApprovedCard renders separately */
+            <div className="flex items-center gap-2 text-sm text-green-600">
+              <CheckCircle2 className="size-4" />
+              <span>Auto-approved and posted — zero exceptions detected</span>
+            </div>
+          ) : step.step === "approval_recommendation" ? (
+            /* Non-auto recommendation — show formatted view */
+            <ApprovalRecommendationView output={step.output} />
           ) : (
             <>
               <JsonBlock data={step.output} expanded={expanded} />
@@ -768,16 +1072,16 @@ export default function InvoicePipelinePage() {
     start(id)
   }, [start, reset])
 
-  // Auto-run on mount
+  // Auto-run on mount — runs once per page navigation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (!invoiceId) return
     executePipeline(invoiceId)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceId])
+  }, [invoiceId]) // only re-run when invoiceId changes
 
   // Extract recommendation from the approval step
   const approvalStep = steps.find((s) => s.step === "approval_recommendation" && s.status === "complete")
-  const recOutput = approvalStep?.output as { recommendation?: string; reasoning?: string; risk_factors?: string[] } | undefined
+  const recOutput = approvalStep?.output as { recommendation?: string; reasoning?: string; risk_factors?: string[]; auto_approved?: boolean; auto_posted?: boolean; posted_at?: string } | undefined
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-8">
@@ -824,7 +1128,7 @@ export default function InvoicePipelinePage() {
               <div>
                 <p className="font-semibold">Starting Agent Pipeline...</p>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  OCR &rarr; Vendor Match &rarr; Classification &rarr; 3-Way Match &rarr; Exception Resolution &rarr; Recommendation
+                  Connecting to AI agents. Steps will appear one by one.
                 </p>
               </div>
             </div>
@@ -859,22 +1163,32 @@ export default function InvoicePipelinePage() {
               key={step.step}
               step={step}
               index={i}
+              invoiceId={invoiceId}
+              onRerunPipeline={() => executePipeline(invoiceId)}
               onRefresh={() => {
                 // After approval actions, we could re-fetch, but for now just log
               }}
             />
           ))}
 
-          {/* Recommendation card */}
+          {/* Recommendation card — or AutoApprovedCard for clean matches */}
           {done && recOutput && (
-            <RecommendationCard
-              recommendation={done.recommendation}
-              reasoning={recOutput.reasoning}
-              riskFactors={recOutput.risk_factors}
-              totalDuration={done.total_duration_ms}
-              finalStatus={done.final_status}
-              invoiceId={done.invoice_id}
-            />
+            recOutput.auto_approved ? (
+              <AutoApprovedCard
+                totalDuration={done.total_duration_ms}
+                invoiceId={done.invoice_id}
+                postedAt={recOutput.posted_at as string | undefined}
+              />
+            ) : (
+              <RecommendationCard
+                recommendation={done.recommendation}
+                reasoning={recOutput.reasoning}
+                riskFactors={recOutput.risk_factors}
+                totalDuration={done.total_duration_ms}
+                finalStatus={done.final_status}
+                invoiceId={done.invoice_id}
+              />
+            )
           )}
 
           {/* Timing bar */}

@@ -101,6 +101,7 @@ export interface Invoice {
   source_channel: SourceChannel
   file_storage_path?: string
   ocr_confidence_score?: number
+  posted_at?: string
   line_items: InvoiceLineItem[]
   created_at: string
   updated_at: string

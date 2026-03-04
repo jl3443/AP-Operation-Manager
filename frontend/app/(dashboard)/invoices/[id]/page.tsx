@@ -114,7 +114,7 @@ export default function InvoiceDetailPage() {
   function handleApprove() {
     approveMutation.mutate(invoiceId, {
       onSuccess: () => {
-        toast.success("Invoice approved")
+        toast.success("Invoice approved and posted to ledger")
         refetch()
       },
       onError: (err) => {
@@ -153,7 +153,7 @@ export default function InvoiceDetailPage() {
               <InvoiceStatusBadge status={invoice.status} />
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Vendor ID: {invoice.vendor_id.slice(0, 8)}...
+              {invoice.vendor_id ? `Vendor ID: ${invoice.vendor_id.slice(0, 8)}...` : "No vendor assigned"}
             </p>
           </div>
         </div>
@@ -238,6 +238,25 @@ export default function InvoiceDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Posted to Ledger Banner */}
+      {invoice.status === "posted" && (
+        <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30">
+          <CardContent className="py-3 flex items-center gap-3">
+            <CheckCircle className="size-5 text-green-600 dark:text-green-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                Posted to General Ledger
+              </p>
+              <p className="text-xs text-green-600 dark:text-green-400">
+                {invoice.posted_at
+                  ? `Posted on ${new Date(invoice.posted_at).toLocaleString()}`
+                  : "Successfully posted"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Split View */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left Panel - Styled Document Preview */}
@@ -291,7 +310,7 @@ export default function InvoiceDetailPage() {
                 {/* Vendor info */}
                 <div className="mb-4 text-xs text-gray-600 dark:text-gray-400">
                   <p className="font-medium text-gray-900 dark:text-gray-100">
-                    Vendor: {invoice.vendor?.name ?? `ID ${invoice.vendor_id.slice(0, 8)}`}
+                    Vendor: {invoice.vendor?.name ?? (invoice.vendor_id ? `ID ${invoice.vendor_id.slice(0, 8)}` : "Unassigned")}
                   </p>
                   {invoice.vendor?.vendor_code && (
                     <p>Code: {invoice.vendor.vendor_code}</p>

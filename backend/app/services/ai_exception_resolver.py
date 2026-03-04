@@ -95,21 +95,25 @@ AVAILABLE ACTION TYPES (use ONLY these):
 - CREATE_WAIT_TIMER: Set timeout for expected event
 - WAIT_FOR_REPLY: Pause execution until manual trigger
 - SUMMARIZE_FINDINGS: AI summary of all completed steps (use as final step)
+- APPLY_CORRECTIONS: Apply recalculated line totals to invoice (requires_human_approval=true)
+- GENERATE_CREDIT_REQUEST: Generate credit request document for qty overrun (requires_human_approval=true)
+- ADJUST_INVOICE_QUANTITIES: Cap invoice qty to PO qty and recalculate totals
 
 PLAYBOOK GUIDELINES BY EXCEPTION TYPE:
 
-1. missing_po: Search PO candidates → Auto-link PO (if found) → Compare line items → Draft vendor email (if not found) → Rerun match
+1. missing_po: SEARCH_PO_CANDIDATES → if found AUTO_LINK_PO → COMPARE_LINE_ITEMS → if not found DRAFT_VENDOR_EMAIL(requires_human_approval=true) asking vendor for PO reference → RERUN_MATCH
 2. amount_variance (within tolerance): Compare line items → Check tolerance → Generate explanation → Propose auto-resolve → Close exception
-3. amount_variance (outside tolerance): Compare line items → Calculate variance breakdown → Recalculate total → Draft vendor email → Rerun match
-4. contract_price_variance: Compare line items → Calculate variance breakdown → Normalize UOM or draft clarification email → Rerun match
-5. quantity_variance: Check GRN status → Compare line items → Draft internal message to warehouse → Rerun match
-6. vendor_mismatch: Verify vendor details → Suggest vendor alias → human confirms → Link vendor → Rerun match
-7. duplicate_invoice: Find duplicates → Lock for payment → Create review task → Draft credit memo email
-8. tax_variance: Recalc tax → Calculate variance breakdown → Generate explanation → Check tolerance → Draft vendor email or auto-resolve
-9. currency_variance: Fetch FX rate → Convert amounts → Compare line items → Rerun match
-10. partial_delivery_overrun: Check GRN status → Compare line items → Draft internal message → Create wait timer
-11. expired_po: Lookup policy rules → Propose terms override → Draft vendor email → Escalate to manager
-12. vendor_on_hold: Check vendor compliance → Verify vendor details → Draft vendor email → Reassign to vendor enablement
+3. amount_variance (calculation error — qty*unit_price != line_total): COMPARE_LINE_ITEMS → RECALC_LINE_TOTALS → RECALCULATE_INVOICE_TOTAL → APPLY_CORRECTIONS(requires_human_approval=true). CRITICAL RULE: If any invoice line has "CALCULATION ERROR" flagged (i.e. qty*unit_price != stated line_total), you MUST use the RECALC+APPLY_CORRECTIONS flow. Do NOT draft vendor emails for calculation errors — these are invoice math mistakes that can be corrected internally. After corrections are applied the user will rerun the pipeline.
+4. amount_variance (price overcharge — unit prices differ from PO but line_total == qty*unit_price): COMPARE_LINE_ITEMS → CALCULATE_VARIANCE_BREAKDOWN → DRAFT_VENDOR_EMAIL(requires_human_approval=true) notifying about overcharge → do NOT use RERUN_MATCH. Only use this when line totals are mathematically correct but unit prices differ from PO.
+5. quantity_variance (invoice qty > PO qty): CHECK_GRN_STATUS → COMPARE_LINE_ITEMS → GENERATE_CREDIT_REQUEST(requires_human_approval=true) → ADJUST_INVOICE_QUANTITIES → RERUN_MATCH. IMPORTANT: When invoice quantity exceeds PO quantity, generate a credit request first, then adjust quantities down to PO levels.
+6. contract_price_variance: Compare line items → Calculate variance breakdown → Normalize UOM or draft clarification email → Rerun match
+7. vendor_mismatch: Verify vendor details → Suggest vendor alias → human confirms → Link vendor → Rerun match
+8. duplicate_invoice: Find duplicates → Lock for payment → Create review task → Draft credit memo email
+9. tax_variance: Recalc tax → Calculate variance breakdown → Generate explanation → Check tolerance → Draft vendor email or auto-resolve
+10. currency_variance: Fetch FX rate → Convert amounts → Compare line items → Rerun match
+11. partial_delivery_overrun: Check GRN status → Compare line items → Draft internal message → Create wait timer
+12. expired_po: Lookup policy rules → Propose terms override → Draft vendor email → Escalate to manager
+13. vendor_on_hold: Check vendor compliance → Verify vendor details → Draft vendor email → Reassign to vendor enablement
 
 RULES:
 - Use the minimum number of steps needed
@@ -180,15 +184,28 @@ def _build_resolver_context(db: Session, exception: Exception_) -> str:
                 grn_parts.append(f"GRN {grn.grn_number} ({grn.receipt_date}): {lines_str}")
             grn_info = "\n".join(grn_parts)
 
-    # Invoice line items
+    # Invoice line items — include computed total to highlight calculation errors
     inv_lines_str = "No line items."
+    calc_errors_found = False
     if invoice and invoice.line_items:
-        inv_lines_str = "\n".join(
-            f"  Line {li.line_number}: {li.description} | Qty: {float(li.quantity)} | "
-            f"Unit: ${float(li.unit_price):,.2f} | Total: ${float(li.line_total):,.2f} | "
-            f"PO Line linked: {'Yes' if li.po_line_id else 'No'}"
-            for li in invoice.line_items
-        )
+        parts = []
+        for li in invoice.line_items:
+            computed = float(li.quantity or 0) * float(li.unit_price or 0)
+            stated = float(li.line_total or 0)
+            diff = abs(computed - stated)
+            flag = ""
+            if diff > 0.01:
+                flag = f" *** CALCULATION ERROR: qty*price=${computed:,.2f} != stated total ${stated:,.2f} (diff: ${diff:,.2f})"
+                calc_errors_found = True
+            parts.append(
+                f"  Line {li.line_number}: {li.description} | Qty: {float(li.quantity)} | "
+                f"Unit: ${float(li.unit_price):,.2f} | Total: ${float(li.line_total):,.2f} | "
+                f"Computed (qty*price): ${computed:,.2f} | "
+                f"PO Line linked: {'Yes' if li.po_line_id else 'No'}{flag}"
+            )
+        inv_lines_str = "\n".join(parts)
+        if calc_errors_found:
+            inv_lines_str += "\n\n  >>> CALCULATION ERRORS DETECTED: One or more line totals do NOT equal qty * unit_price. This is a DATA/CALCULATION ERROR — use RECALC_LINE_TOTALS + APPLY_CORRECTIONS flow, NOT vendor email."
 
     # Match details
     match_info = "No match result."
