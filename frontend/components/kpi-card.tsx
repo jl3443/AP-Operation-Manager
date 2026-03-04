@@ -15,11 +15,11 @@ interface KpiCardProps {
 
 export function KpiCard({ title, value, icon: Icon, trend, className }: KpiCardProps) {
   return (
-    <Card className={cn("gap-0 py-4", className)}>
+    <Card className={cn("gap-0 py-3", className)}>
       <CardContent className="flex items-start justify-between">
-        <div className="space-y-1">
-          <p className="text-sm text-muted-foreground font-medium">{title}</p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground font-medium">{title}</p>
+          <p className="text-xl font-bold tracking-tight tabular-nums">{value}</p>
           {trend && (
             <div className="flex items-center gap-1 text-xs">
               {trend.value > 0 ? (
@@ -43,8 +43,8 @@ export function KpiCard({ title, value, icon: Icon, trend, className }: KpiCardP
             </div>
           )}
         </div>
-        <div className="rounded-lg bg-primary/10 p-2.5">
-          <Icon className="size-5 text-primary" />
+        <div className="rounded-lg bg-primary/10 p-2">
+          <Icon className="size-4 text-primary" />
         </div>
       </CardContent>
     </Card>

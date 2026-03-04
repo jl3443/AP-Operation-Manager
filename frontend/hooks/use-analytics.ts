@@ -43,6 +43,15 @@ export function useApprovalTurnaround() {
   })
 }
 
+export function useAiSummary(page: "analytics" | "dashboard") {
+  return useQuery<{ page: string; summary: string }>({
+    queryKey: ["ai-summary", page],
+    queryFn: () => apiGet<{ page: string; summary: string }>(`/analytics/ai-summary?page=${page}`),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  })
+}
+
 export function useExportPdfReport() {
   return useMutation({
     mutationFn: async (params?: { dateFrom?: string; dateTo?: string }) => {

@@ -8,6 +8,8 @@ import {
   ArrowRight,
   Zap,
   Timer,
+  Download,
+  Loader2,
 } from "lucide-react"
 import Link from "next/link"
 import {
@@ -19,11 +21,14 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
+import { toast } from "sonner"
 
 import { useDashboardKPIs, useFunnelData, useTopVendors, useTrends } from "@/hooks/use-dashboard"
 import { useTouchlessRate } from "@/hooks/use-compliance"
 import { useInvoices } from "@/hooks/use-invoices"
+import { useExportPdfReport } from "@/hooks/use-analytics"
 import { KpiCard } from "@/components/kpi-card"
+import { AiSummaryCard } from "@/components/ai-summary-card"
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
 import { KpiCardSkeleton, ChartSkeleton, TableSkeleton } from "@/components/loading-skeleton"
 import { QueryError } from "@/components/query-error"
@@ -87,10 +92,11 @@ export default function DashboardPage() {
   const { data: touchless, isLoading: touchlessLoading } = useTouchlessRate()
   const { data: invoiceData, isLoading: invoicesLoading } = useInvoices({
     page: 1,
-    page_size: 5,
+    page_size: 2,
     sort_by: "created_at",
     sort_order: "desc",
   })
+  const exportPdf = useExportPdfReport()
 
   const funnelChartData = funnel?.stages.map((s) => ({
     stage: s.stage.charAt(0).toUpperCase() + s.stage.slice(1).replaceAll("_", " "),
@@ -119,10 +125,35 @@ export default function DashboardPage() {
     value: p.value,
   }))
 
+  function handleExportPdf() {
+    exportPdf.mutate(undefined, {
+      onSuccess: () => toast.success("PDF report downloaded successfully"),
+      onError: () => toast.error("Failed to export PDF report"),
+    })
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
+        </div>
+        <Button onClick={handleExportPdf} disabled={exportPdf.isPending} size="sm" variant="outline">
+          {exportPdf.isPending ? (
+            <Loader2 className="size-4 animate-spin mr-2" />
+          ) : (
+            <Download className="size-4 mr-2" />
+          )}
+          Export PDF
+        </Button>
+      </div>
+
+      {/* AI Summary */}
+      <AiSummaryCard page="dashboard" />
+
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {kpisLoading ? (
           <>
             <KpiCardSkeleton />
@@ -172,18 +203,18 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Charts Row */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* Charts Row: Funnel + Trend + Top Vendors */}
+      <div className="grid gap-2 lg:grid-cols-3">
         {/* Invoice Processing Funnel */}
         {funnelLoading ? (
           <ChartSkeleton />
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Invoice Processing Funnel</CardTitle>
+            <CardHeader className="py-2">
+              <CardTitle className="text-sm font-medium tracking-tight">Processing Funnel</CardTitle>
             </CardHeader>
-            <CardContent>
-              <ChartContainer config={funnelConfig} className="h-[250px] w-full">
+            <CardContent className="pt-0">
+              <ChartContainer config={funnelConfig} className="h-[140px] w-full">
                 <BarChart
                   data={funnelChartData}
                   layout="vertical"
@@ -196,7 +227,7 @@ export default function DashboardPage() {
                     tickLine={false}
                     axisLine={false}
                     width={100}
-                    fontSize={12}
+                    fontSize={11}
                   />
                   <XAxis type="number" hide />
                   <ChartTooltip content={<ChartTooltipContent />} />
@@ -212,28 +243,28 @@ export default function DashboardPage() {
           <ChartSkeleton />
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Invoice Volume Trend</CardTitle>
+            <CardHeader className="py-2">
+              <CardTitle className="text-sm font-medium tracking-tight">Volume Trend</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {trendChartData.length === 0 ? (
-                <div className="flex items-center justify-center h-[250px] text-sm text-muted-foreground">
+                <div className="flex items-center justify-center h-[140px] text-sm text-muted-foreground">
                   No trend data available
                 </div>
               ) : (
-                <ChartContainer config={trendConfig} className="h-[250px] w-full">
+                <ChartContainer config={trendConfig} className="h-[140px] w-full">
                   <LineChart data={trendChartData} margin={{ left: 10, right: 20, top: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       dataKey="date"
                       tickLine={false}
                       axisLine={false}
-                      fontSize={12}
+                      fontSize={11}
                     />
                     <YAxis
                       tickLine={false}
                       axisLine={false}
-                      fontSize={12}
+                      fontSize={11}
                     />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Line
@@ -241,8 +272,8 @@ export default function DashboardPage() {
                       type="monotone"
                       stroke="var(--color-value)"
                       strokeWidth={2}
-                      dot={{ fill: "var(--color-value)", r: 4 }}
-                      activeDot={{ r: 6 }}
+                      dot={{ fill: "var(--color-value)", r: 3 }}
+                      activeDot={{ r: 5 }}
                     />
                   </LineChart>
                 </ChartContainer>
@@ -250,97 +281,34 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         )}
-      </div>
-
-      {/* Bottom Row */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Recent Invoices */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Recent Invoices</CardTitle>
-            <CardAction>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/invoices" className="gap-1">
-                  View All <ArrowRight className="size-3" />
-                </Link>
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            {invoicesLoading ? (
-              <TableSkeleton rows={5} cols={4} />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoiceData?.items.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                        No invoices yet. Upload or import data to get started.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {invoiceData?.items.map((invoice) => (
-                    <TableRow key={invoice.id}>
-                      <TableCell>
-                        <Link
-                          href={`/invoices/${invoice.id}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {invoice.invoice_number}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {invoice.invoice_date}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        ${invoice.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                      </TableCell>
-                      <TableCell>
-                        <InvoiceStatusBadge status={invoice.status} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
 
         {/* Top Vendors */}
         {vendorsLoading ? (
           <ChartSkeleton />
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Top Vendors by Volume</CardTitle>
+            <CardHeader className="py-2">
+              <CardTitle className="text-sm font-medium tracking-tight">Top Vendors</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {vendorChartData.length === 0 ? (
-                <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">
+                <div className="flex items-center justify-center h-[140px] text-sm text-muted-foreground">
                   No vendor data available
                 </div>
               ) : (
-                <ChartContainer config={vendorConfigDynamic} className="h-[280px] w-full">
+                <ChartContainer config={vendorConfigDynamic} className="h-[140px] w-full">
                   <BarChart data={vendorChartData} margin={{ left: 0, right: 10 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
                     <XAxis
                       dataKey="name"
                       tickLine={false}
                       axisLine={false}
-                      fontSize={11}
-                      angle={-20}
+                      fontSize={10}
+                      angle={-15}
                       textAnchor="end"
-                      height={50}
+                      height={40}
                     />
-                    <YAxis tickLine={false} axisLine={false} fontSize={12} />
+                    <YAxis tickLine={false} axisLine={false} fontSize={11} />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Bar dataKey="invoices" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -350,6 +318,66 @@ export default function DashboardPage() {
           </Card>
         )}
       </div>
+
+      {/* Recent Invoices Table */}
+      <Card>
+        <CardHeader className="py-2">
+          <CardTitle className="text-sm font-medium tracking-tight">Recent Invoices</CardTitle>
+          <CardAction>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/invoices" className="gap-1 text-xs">
+                View All <ArrowRight className="size-3" />
+              </Link>
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {invoicesLoading ? (
+            <TableSkeleton rows={2} cols={4} />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Invoice #</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Date</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Amount</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoiceData?.items.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                      No invoices yet. Upload or import data to get started.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {invoiceData?.items.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell>
+                      <Link
+                        href={`/invoices/${invoice.id}`}
+                        className="text-sm font-medium text-primary hover:underline"
+                      >
+                        {invoice.invoice_number}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {invoice.invoice_date}
+                    </TableCell>
+                    <TableCell className="text-right text-sm font-mono tabular-nums">
+                      ${invoice.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell>
+                      <InvoiceStatusBadge status={invoice.status} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

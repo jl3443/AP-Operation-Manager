@@ -579,3 +579,19 @@ def optimization_proposals(
         ))
 
     return proposals
+
+
+# ── AI Summary ──────────────────────────────────────────────────────────
+
+
+@router.get("/ai-summary")
+def ai_summary_endpoint(
+    page: str = Query("analytics", regex="^(analytics|dashboard)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return an AI-generated executive summary for the given page."""
+    from app.services.ai_summary import get_ai_summary
+
+    summary = get_ai_summary(db, page)
+    return {"page": page, "summary": summary}

@@ -9,7 +9,6 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Legend,
 } from "recharts"
 import { Download, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -22,6 +21,7 @@ import {
   useApprovalTurnaround,
   useExportPdfReport,
 } from "@/hooks/use-analytics"
+import { AiSummaryCard } from "@/components/ai-summary-card"
 import { ChartSkeleton } from "@/components/loading-skeleton"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -82,23 +82,24 @@ const turnaroundConfig = {
   avg_hours: { label: "Avg Hours", color: "oklch(0.55 0.15 255)" },
 } satisfies ChartConfig
 
-// -- Custom label renderer for donut charts --
+// -- Compact legend for pie/donut charts --
 
-function renderPieLabel({
-  name,
-  percentage,
-  x,
-  y,
-}: {
-  name: string
-  percentage: number
-  x: number
-  y: number
-}) {
+function PieLegend({ data }: { data: { name: string; fill: string; percentage?: number }[] }) {
   return (
-    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" className="text-xs fill-foreground">
-      {`${name} (${percentage.toFixed(1)}%)`}
-    </text>
+    <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-1">
+      {data.map((item) => (
+        <div key={item.name} className="flex items-center gap-1.5">
+          <span
+            className="inline-block size-2.5 rounded-full shrink-0"
+            style={{ backgroundColor: item.fill }}
+          />
+          <span className="text-[11px] text-muted-foreground capitalize">
+            {item.name}
+            {item.percentage != null && ` (${item.percentage.toFixed(0)}%)`}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -162,50 +163,55 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          In-depth analytics across invoices, exceptions, vendors, and approvals.
-        </p>
-        <Button onClick={handleExportPdf} disabled={exportPdf.isPending} size="sm">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
+          <p className="text-sm text-muted-foreground">
+            In-depth analytics across invoices, exceptions, vendors, and approvals.
+          </p>
+        </div>
+        <Button onClick={handleExportPdf} disabled={exportPdf.isPending} size="sm" variant="outline">
           {exportPdf.isPending ? (
             <Loader2 className="size-4 animate-spin mr-2" />
           ) : (
             <Download className="size-4 mr-2" />
           )}
-          Export PDF Report
+          Export PDF
         </Button>
       </div>
 
+      {/* AI Summary */}
+      <AiSummaryCard page="analytics" />
+
       {/* Row 1: Aging + Exception Breakdown */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         {/* Invoice Aging Analysis */}
         {agingLoading ? (
           <ChartSkeleton />
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Invoice Aging Analysis</CardTitle>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm font-medium tracking-tight">Invoice Aging Analysis</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {agingChartData.length === 0 ? (
-                <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
                   No data available
                 </div>
               ) : (
-                <ChartContainer config={agingConfig} className="h-[300px] w-full">
+                <ChartContainer config={agingConfig} className="h-[200px] w-full">
                   <BarChart data={agingChartData} margin={{ left: 10, right: 20 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
                     <XAxis
                       dataKey="bucket"
                       tickLine={false}
                       axisLine={false}
-                      fontSize={12}
+                      fontSize={11}
                     />
-                    <YAxis tickLine={false} axisLine={false} fontSize={12} />
+                    <YAxis tickLine={false} axisLine={false} fontSize={11} />
                     <ChartTooltip content={<ChartTooltipContent />} />
-                    <Legend />
                     <Bar dataKey="count" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ChartContainer>
@@ -219,68 +225,68 @@ export default function AnalyticsPage() {
           <ChartSkeleton />
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Exception Breakdown by Type</CardTitle>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm font-medium tracking-tight">Exception Breakdown</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {exceptionChartData.length === 0 ? (
-                <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
                   No data available
                 </div>
               ) : (
-                <ChartContainer config={exceptionConfig} className="h-[300px] w-full">
-                  <PieChart>
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Pie
-                      data={exceptionChartData}
-                      dataKey="count"
-                      nameKey="name"
-                      innerRadius={60}
-                      outerRadius={100}
-                      label={({ name, percentage, x, y }) =>
-                        renderPieLabel({ name, percentage, x, y })
-                      }
-                    >
-                      {exceptionChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ChartContainer>
+                <>
+                  <ChartContainer config={exceptionConfig} className="h-[160px] w-full">
+                    <PieChart>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Pie
+                        data={exceptionChartData}
+                        dataKey="count"
+                        nameKey="name"
+                        innerRadius={40}
+                        outerRadius={68}
+                        paddingAngle={2}
+                      >
+                        {exceptionChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ChartContainer>
+                  <PieLegend data={exceptionChartData} />
+                </>
               )}
             </CardContent>
           </Card>
         )}
       </div>
 
-      {/* Row 2: Monthly Comparison + Vendor Risk */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* Row 2: Monthly + Vendor Risk + Approval Turnaround */}
+      <div className="grid gap-3 lg:grid-cols-3">
         {/* Monthly Invoice Comparison */}
         {monthlyLoading ? (
           <ChartSkeleton />
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Monthly Invoice Comparison</CardTitle>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm font-medium tracking-tight">Monthly Comparison</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {monthlyChartData.length === 0 ? (
-                <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
                   No data available
                 </div>
               ) : (
-                <ChartContainer config={monthlyConfig} className="h-[300px] w-full">
+                <ChartContainer config={monthlyConfig} className="h-[200px] w-full">
                   <BarChart data={monthlyChartData} margin={{ left: 10, right: 20 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
                     <XAxis
                       dataKey="month"
                       tickLine={false}
                       axisLine={false}
-                      fontSize={12}
+                      fontSize={11}
                     />
-                    <YAxis tickLine={false} axisLine={false} fontSize={12} />
+                    <YAxis tickLine={false} axisLine={false} fontSize={11} />
                     <ChartTooltip content={<ChartTooltipContent />} />
-                    <Legend />
                     <Bar
                       dataKey="invoice_count"
                       fill="var(--color-invoice_count)"
@@ -298,81 +304,81 @@ export default function AnalyticsPage() {
           <ChartSkeleton />
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Vendor Risk Distribution</CardTitle>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm font-medium tracking-tight">Vendor Risk</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {riskChartData.length === 0 ? (
-                <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
                   No data available
                 </div>
               ) : (
-                <ChartContainer config={riskConfig} className="h-[300px] w-full">
-                  <PieChart>
+                <>
+                  <ChartContainer config={riskConfig} className="h-[160px] w-full">
+                    <PieChart>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Pie
+                        data={riskChartData}
+                        dataKey="count"
+                        nameKey="name"
+                        innerRadius={40}
+                        outerRadius={68}
+                        paddingAngle={2}
+                      >
+                        {riskChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ChartContainer>
+                  <PieLegend data={riskChartData} />
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Approval Turnaround Time */}
+        {turnaroundLoading ? (
+          <ChartSkeleton />
+        ) : (
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm font-medium tracking-tight">Approval Turnaround</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {turnaroundChartData.length === 0 ? (
+                <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
+                  No data available
+                </div>
+              ) : (
+                <ChartContainer config={turnaroundConfig} className="h-[200px] w-full">
+                  <BarChart
+                    data={turnaroundChartData}
+                    layout="horizontal"
+                    margin={{ left: 10, right: 20 }}
+                  >
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="level"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={11}
+                    />
+                    <YAxis tickLine={false} axisLine={false} fontSize={11} />
                     <ChartTooltip content={<ChartTooltipContent />} />
-                    <Pie
-                      data={riskChartData}
-                      dataKey="count"
-                      nameKey="name"
-                      innerRadius={60}
-                      outerRadius={100}
-                      label={({ name, percentage, x, y }) =>
-                        renderPieLabel({ name, percentage, x, y })
-                      }
-                    >
-                      {riskChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                  </PieChart>
+                    <Bar
+                      dataKey="avg_hours"
+                      fill="var(--color-avg_hours)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
                 </ChartContainer>
               )}
             </CardContent>
           </Card>
         )}
       </div>
-
-      {/* Row 3: Approval Turnaround */}
-      {turnaroundLoading ? (
-        <ChartSkeleton />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Approval Turnaround Time</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {turnaroundChartData.length === 0 ? (
-              <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
-                No data available
-              </div>
-            ) : (
-              <ChartContainer config={turnaroundConfig} className="h-[300px] w-full">
-                <BarChart
-                  data={turnaroundChartData}
-                  layout="horizontal"
-                  margin={{ left: 10, right: 20 }}
-                >
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="level"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={12}
-                  />
-                  <YAxis tickLine={false} axisLine={false} fontSize={12} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Legend />
-                  <Bar
-                    dataKey="avg_hours"
-                    fill="var(--color-avg_hours)"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ChartContainer>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }
