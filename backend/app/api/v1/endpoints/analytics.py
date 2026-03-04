@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from io import BytesIO
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import extract, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.approval import ApprovalStatus, ApprovalTask
+from app.models.approval import ApprovalTask
 from app.models.exception import Exception_, ExceptionStatus, ExceptionType
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.matching import MatchResult, MatchStatus
@@ -48,10 +47,7 @@ def dashboard_kpis(
     """Return high-level KPIs for the dashboard."""
     total_invoices = db.query(func.count(Invoice.id)).scalar() or 0
     pending_approval = (
-        db.query(func.count(Invoice.id))
-        .filter(Invoice.status == InvoiceStatus.pending_approval)
-        .scalar()
-        or 0
+        db.query(func.count(Invoice.id)).filter(Invoice.status == InvoiceStatus.pending_approval).scalar() or 0
     )
     open_exceptions = (
         db.query(func.count(Exception_.id))
@@ -76,19 +72,17 @@ def dashboard_kpis(
     match_rate = (fully_matched / total_matched * 100) if total_matched else 0.0
 
     # Straight-through rate: invoices that went from draft -> approved without exception
-    approved = (
-        db.query(func.count(Invoice.id))
-        .filter(Invoice.status == InvoiceStatus.approved)
-        .scalar()
-        or 0
-    )
+    approved = db.query(func.count(Invoice.id)).filter(Invoice.status == InvoiceStatus.approved).scalar() or 0
     stp_rate = (approved / total_invoices * 100) if total_invoices else 0.0
 
     # Overdue
     today = date.today()
     overdue = (
         db.query(func.count(Invoice.id))
-        .filter(Invoice.due_date < today, Invoice.status.notin_([InvoiceStatus.posted, InvoiceStatus.approved, InvoiceStatus.rejected]))
+        .filter(
+            Invoice.due_date < today,
+            Invoice.status.notin_([InvoiceStatus.posted, InvoiceStatus.approved, InvoiceStatus.rejected]),
+        )
         .scalar()
         or 0
     )
@@ -114,16 +108,12 @@ def invoice_funnel(
     stages = []
     for s in InvoiceStatus:
         count = db.query(func.count(Invoice.id)).filter(Invoice.status == s).scalar() or 0
-        amount = (
-            db.query(func.coalesce(func.sum(Invoice.total_amount), 0))
-            .filter(Invoice.status == s)
-            .scalar()
-        )
+        amount = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).filter(Invoice.status == s).scalar()
         stages.append(FunnelStage(stage=s.value, count=count, amount=float(amount)))
     return FunnelData(stages=stages)
 
 
-@router.get("/trends", response_model=List[TrendData])
+@router.get("/trends", response_model=list[TrendData])
 def invoice_trends(
     days: int = Query(30, ge=7, le=365),
     db: Session = Depends(get_db),
@@ -148,7 +138,7 @@ def invoice_trends(
     return [TrendData(series_name="invoices_received", data_points=data_points)]
 
 
-@router.get("/vendors/top", response_model=List[VendorSummary])
+@router.get("/vendors/top", response_model=list[VendorSummary])
 def top_vendors(
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
@@ -198,11 +188,7 @@ def invoice_aging(
     """Bucket unpaid invoices by days to due date."""
     today = date.today()
     excluded = [InvoiceStatus.posted, InvoiceStatus.approved, InvoiceStatus.rejected]
-    invoices = (
-        db.query(Invoice.due_date, Invoice.total_amount)
-        .filter(Invoice.status.notin_(excluded))
-        .all()
-    )
+    invoices = db.query(Invoice.due_date, Invoice.total_amount).filter(Invoice.status.notin_(excluded)).all()
 
     buckets_map: dict[str, dict] = {
         "current": {"count": 0, "amount": 0.0},
@@ -227,14 +213,11 @@ def invoice_aging(
         buckets_map[key]["count"] += 1
         buckets_map[key]["amount"] += float(inv.total_amount)
 
-    buckets = [
-        AgingBucket(bucket=k, count=v["count"], amount=round(v["amount"], 2))
-        for k, v in buckets_map.items()
-    ]
+    buckets = [AgingBucket(bucket=k, count=v["count"], amount=round(v["amount"], 2)) for k, v in buckets_map.items()]
     return AgingData(buckets=buckets)
 
 
-@router.get("/exceptions/breakdown", response_model=List[ExceptionBreakdown])
+@router.get("/exceptions/breakdown", response_model=list[ExceptionBreakdown])
 def exceptions_breakdown(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -260,7 +243,7 @@ def exceptions_breakdown(
     ]
 
 
-@router.get("/vendors/risk-distribution", response_model=List[VendorRiskDistribution])
+@router.get("/vendors/risk-distribution", response_model=list[VendorRiskDistribution])
 def vendor_risk_distribution(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -286,7 +269,7 @@ def vendor_risk_distribution(
     ]
 
 
-@router.get("/monthly-comparison", response_model=List[MonthlyComparison])
+@router.get("/monthly-comparison", response_model=list[MonthlyComparison])
 def monthly_comparison(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -324,7 +307,7 @@ def monthly_comparison(
     return results
 
 
-@router.get("/approvals/turnaround", response_model=List[ApprovalTurnaround])
+@router.get("/approvals/turnaround", response_model=list[ApprovalTurnaround])
 def approvals_turnaround(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -334,8 +317,7 @@ def approvals_turnaround(
         db.query(
             ApprovalTask.approval_level,
             func.avg(
-                func.extract("epoch", ApprovalTask.decision_at)
-                - func.extract("epoch", ApprovalTask.created_at)
+                func.extract("epoch", ApprovalTask.decision_at) - func.extract("epoch", ApprovalTask.created_at)
             ).label("avg_seconds"),
             func.count(ApprovalTask.id).label("total"),
         )
@@ -357,8 +339,8 @@ def approvals_turnaround(
 
 @router.get("/report/pdf")
 def analytics_report_pdf(
-    date_from: Optional[date] = Query(None),
-    date_to: Optional[date] = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -375,9 +357,7 @@ def analytics_report_pdf(
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"attachment; filename=ap_analytics_{date_from}_{date_to}.pdf"
-        },
+        headers={"Content-Disposition": f"attachment; filename=ap_analytics_{date_from}_{date_to}.pdf"},
     )
 
 
@@ -390,10 +370,7 @@ def touchless_rate(
     total = db.query(func.count(Invoice.id)).scalar() or 0
 
     # Touchless = invoices that reached approved/posted WITHOUT any exception
-    from sqlalchemy import exists, and_
-    exception_subq = db.query(Exception_.id).filter(
-        Exception_.invoice_id == Invoice.id
-    ).exists()
+    exception_subq = db.query(Exception_.id).filter(Exception_.invoice_id == Invoice.id).exists()
 
     touchless = (
         db.query(func.count(Invoice.id))
@@ -408,14 +385,8 @@ def touchless_rate(
     rate = (touchless / total * 100) if total else 0.0
 
     # Avg cycle time: hours from created_at to updated_at for approved/posted
-    from sqlalchemy import extract as sql_extract
     avg_hours_row = (
-        db.query(
-            func.avg(
-                func.extract("epoch", Invoice.updated_at)
-                - func.extract("epoch", Invoice.created_at)
-            )
-        )
+        db.query(func.avg(func.extract("epoch", Invoice.updated_at) - func.extract("epoch", Invoice.created_at)))
         .filter(Invoice.status.in_([InvoiceStatus.approved, InvoiceStatus.posted]))
         .scalar()
     )
@@ -429,7 +400,7 @@ def touchless_rate(
     )
 
 
-@router.get("/root-causes", response_model=List[RootCauseItem])
+@router.get("/root-causes", response_model=list[RootCauseItem])
 def root_causes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -468,19 +439,21 @@ def root_causes(
 
     for r in rows:
         exc_type = r.exception_type.value if hasattr(r.exception_type, "value") else str(r.exception_type)
-        results.append(RootCauseItem(
-            category=exc_type,
-            issue=f"{exc_type.replace('_', ' ').title()} — {r.vendor_name}",
-            occurrence_count=r.cnt,
-            affected_invoices=r.cnt,
-            impact_amount=round(float(r.total_amount or 0), 2),
-            suggested_fix=fix_map.get(exc_type, "Investigate and update matching rules"),
-        ))
+        results.append(
+            RootCauseItem(
+                category=exc_type,
+                issue=f"{exc_type.replace('_', ' ').title()} — {r.vendor_name}",
+                occurrence_count=r.cnt,
+                affected_invoices=r.cnt,
+                impact_amount=round(float(r.total_amount or 0), 2),
+                suggested_fix=fix_map.get(exc_type, "Investigate and update matching rules"),
+            )
+        )
 
     return results
 
 
-@router.get("/optimization-proposals", response_model=List[OptimizationProposal])
+@router.get("/optimization-proposals", response_model=list[OptimizationProposal])
 def optimization_proposals(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -495,88 +468,95 @@ def optimization_proposals(
 
     # Check amount variance frequency
     amt_var_count = (
-        db.query(func.count(Exception_.id))
-        .filter(Exception_.exception_type == ExceptionType.amount_variance)
-        .scalar() or 0
+        db.query(func.count(Exception_.id)).filter(Exception_.exception_type == ExceptionType.amount_variance).scalar()
+        or 0
     )
     if amt_var_count > 0:
-        proposals.append(OptimizationProposal(
-            id="opt-1",
-            title="Increase Amount Tolerance Threshold",
-            description=f"{amt_var_count} amount variance exceptions detected. Increasing tolerance from 2% to 5% could auto-resolve ~{min(amt_var_count, int(amt_var_count*0.6))} of these.",
-            category="tolerance",
-            priority="high",
-            projected_impact=f"+{round(amt_var_count*0.6/total_invoices*100, 1)}% touchless rate",
-            effort="low",
-            status="proposed",
-        ))
+        proposals.append(
+            OptimizationProposal(
+                id="opt-1",
+                title="Increase Amount Tolerance Threshold",
+                description=f"{amt_var_count} amount variance exceptions detected. Increasing tolerance from 2% to 5% could auto-resolve ~{min(amt_var_count, int(amt_var_count * 0.6))} of these.",
+                category="tolerance",
+                priority="high",
+                projected_impact=f"+{round(amt_var_count * 0.6 / total_invoices * 100, 1)}% touchless rate",
+                effort="low",
+                status="proposed",
+            )
+        )
 
     # Check missing PO frequency
     missing_po_count = (
-        db.query(func.count(Exception_.id))
-        .filter(Exception_.exception_type == ExceptionType.missing_po)
-        .scalar() or 0
+        db.query(func.count(Exception_.id)).filter(Exception_.exception_type == ExceptionType.missing_po).scalar() or 0
     )
     if missing_po_count > 0:
-        proposals.append(OptimizationProposal(
-            id="opt-2",
-            title="Enable Fuzzy PO Matching",
-            description=f"{missing_po_count} missing PO exceptions. Fuzzy matching on vendor + amount + date could resolve ~{min(missing_po_count, int(missing_po_count*0.7))} automatically.",
-            category="matching_rule",
-            priority="high",
-            projected_impact=f"+{round(missing_po_count*0.7/total_invoices*100, 1)}% touchless rate",
-            effort="medium",
-            status="proposed",
-        ))
+        proposals.append(
+            OptimizationProposal(
+                id="opt-2",
+                title="Enable Fuzzy PO Matching",
+                description=f"{missing_po_count} missing PO exceptions. Fuzzy matching on vendor + amount + date could resolve ~{min(missing_po_count, int(missing_po_count * 0.7))} automatically.",
+                category="matching_rule",
+                priority="high",
+                projected_impact=f"+{round(missing_po_count * 0.7 / total_invoices * 100, 1)}% touchless rate",
+                effort="medium",
+                status="proposed",
+            )
+        )
 
     # Check quantity variance
     qty_var_count = (
         db.query(func.count(Exception_.id))
         .filter(Exception_.exception_type == ExceptionType.quantity_variance)
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     if qty_var_count > 0:
-        proposals.append(OptimizationProposal(
-            id="opt-3",
-            title="Add Partial Delivery Tolerance",
-            description=f"{qty_var_count} quantity variance exceptions. Allowing 10% partial delivery tolerance would reduce these by ~{min(qty_var_count, int(qty_var_count*0.5))}.",
-            category="tolerance",
-            priority="medium",
-            projected_impact=f"-{qty_var_count} exceptions/month",
-            effort="low",
-            status="proposed",
-        ))
+        proposals.append(
+            OptimizationProposal(
+                id="opt-3",
+                title="Add Partial Delivery Tolerance",
+                description=f"{qty_var_count} quantity variance exceptions. Allowing 10% partial delivery tolerance would reduce these by ~{min(qty_var_count, int(qty_var_count * 0.5))}.",
+                category="tolerance",
+                priority="medium",
+                projected_impact=f"-{qty_var_count} exceptions/month",
+                effort="low",
+                status="proposed",
+            )
+        )
 
     # Check vendor on-hold
     vendor_hold_count = (
-        db.query(func.count(Exception_.id))
-        .filter(Exception_.exception_type == ExceptionType.vendor_on_hold)
-        .scalar() or 0
+        db.query(func.count(Exception_.id)).filter(Exception_.exception_type == ExceptionType.vendor_on_hold).scalar()
+        or 0
     )
     if vendor_hold_count > 0:
-        proposals.append(OptimizationProposal(
-            id="opt-4",
-            title="Block Invoices from On-Hold Vendors at Ingestion",
-            description=f"{vendor_hold_count} invoices from on-hold vendors reached processing. Pre-screening at email/portal would prevent wasted processing.",
-            category="policy",
-            priority="medium",
-            projected_impact=f"-{vendor_hold_count} wasted processing cycles",
-            effort="medium",
-            status="proposed",
-        ))
+        proposals.append(
+            OptimizationProposal(
+                id="opt-4",
+                title="Block Invoices from On-Hold Vendors at Ingestion",
+                description=f"{vendor_hold_count} invoices from on-hold vendors reached processing. Pre-screening at email/portal would prevent wasted processing.",
+                category="policy",
+                priority="medium",
+                projected_impact=f"-{vendor_hold_count} wasted processing cycles",
+                effort="medium",
+                status="proposed",
+            )
+        )
 
     # General: If exception rate is high, suggest supplier training
     if exception_rate > 20:
-        proposals.append(OptimizationProposal(
-            id="opt-5",
-            title="Supplier Invoice Quality Training Program",
-            description=f"Exception rate is {exception_rate:.0f}%. A supplier training program on proper PO referencing and invoice format could reduce exceptions by 30-40%.",
-            category="supplier_config",
-            priority="high",
-            projected_impact="-30% exception rate",
-            effort="high",
-            status="proposed",
-        ))
+        proposals.append(
+            OptimizationProposal(
+                id="opt-5",
+                title="Supplier Invoice Quality Training Program",
+                description=f"Exception rate is {exception_rate:.0f}%. A supplier training program on proper PO referencing and invoice format could reduce exceptions by 30-40%.",
+                category="supplier_config",
+                priority="high",
+                projected_impact="-30% exception rate",
+                effort="high",
+                status="proposed",
+            )
+        )
 
     return proposals
 

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import io
 import logging
-import tempfile
 from typing import Any
 
 from app.services.ai_service import ai_service
@@ -82,8 +81,12 @@ def _media_type_for(filename: str) -> str | None:
 def _compute_confidence(extracted: dict[str, Any]) -> float:
     """Compute OCR confidence score based on extraction completeness."""
     required_fields = [
-        "invoice_number", "vendor_name", "invoice_date",
-        "due_date", "currency", "total_amount",
+        "invoice_number",
+        "vendor_name",
+        "invoice_date",
+        "due_date",
+        "currency",
+        "total_amount",
     ]
     filled = sum(1 for f in required_fields if extracted.get(f))
     field_score = filled / len(required_fields)
@@ -93,10 +96,7 @@ def _compute_confidence(extracted: dict[str, Any]) -> float:
 
     line_quality = 0.0
     if line_items:
-        good_lines = sum(
-            1 for li in line_items
-            if li.get("description") and li.get("line_total", 0) > 0
-        )
+        good_lines = sum(1 for li in line_items if li.get("description") and li.get("line_total", 0) > 0)
         line_quality = good_lines / len(line_items)
 
     score = field_score * 0.5 + has_lines * 0.2 + line_quality * 0.3
@@ -128,9 +128,7 @@ def _extract_text_pdfplumber(file_content: bytes) -> str:
                                 text_parts.append(" | ".join(cells))
 
         combined = "\n".join(text_parts).strip()
-        logger.info(
-            "pdfplumber extracted %d characters from PDF", len(combined)
-        )
+        logger.info("pdfplumber extracted %d characters from PDF", len(combined))
         return combined
     except Exception as e:
         logger.warning("pdfplumber extraction failed: %s", e)
@@ -143,8 +141,8 @@ def _extract_text_pdfplumber(file_content: bytes) -> str:
 def _extract_text_tesseract(file_content: bytes) -> str:
     """Extract text from a scanned PDF using Tesseract OCR."""
     try:
-        from pdf2image import convert_from_bytes
         import pytesseract
+        from pdf2image import convert_from_bytes
 
         logger.info("Converting PDF to images for Tesseract OCR...")
         images = convert_from_bytes(file_content, dpi=300)
@@ -188,9 +186,7 @@ def _extract_text_tesseract_image(file_content: bytes) -> str:
 # ── Tier 3: Claude Vision (structured extraction) ────────────────────────
 
 
-def _extract_via_claude_vision(
-    file_content: bytes, media_type: str
-) -> dict[str, Any] | None:
+def _extract_via_claude_vision(file_content: bytes, media_type: str) -> dict[str, Any] | None:
     """Send file directly to Claude Vision for extraction."""
     if not ai_service.available:
         return None

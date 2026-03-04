@@ -30,38 +30,37 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.base import TimestampMixin
 
-
 # ── Enums ────────────────────────────────────────────────────────────────
 
 
-class ToleranceScope(str, enum.Enum):
+class ToleranceScope(enum.StrEnum):
     global_ = "global"
     vendor = "vendor"
     category = "category"
     currency = "currency"
 
 
-class RuleVersionStatus(str, enum.Enum):
+class RuleVersionStatus(enum.StrEnum):
     draft = "draft"
     in_review = "in_review"
     published = "published"
     archived = "archived"
 
 
-class ExtractionStatus(str, enum.Enum):
+class ExtractionStatus(enum.StrEnum):
     pending = "pending"
     processing = "processing"
     completed = "completed"
     failed = "failed"
 
 
-class PolicyRuleStatus(str, enum.Enum):
+class PolicyRuleStatus(enum.StrEnum):
     pending = "pending"
     approved = "approved"
     rejected = "rejected"
 
 
-class NotificationType(str, enum.Enum):
+class NotificationType(enum.StrEnum):
     approval_request = "approval_request"
     exception_assigned = "exception_assigned"
     invoice_status_change = "invoice_status_change"
@@ -119,9 +118,7 @@ class PolicyDocument(TimestampMixin, Base):
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     document_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    uploaded_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     extraction_status: Mapped[ExtractionStatus] = mapped_column(
         Enum(ExtractionStatus, name="extraction_status", native_enum=False),
         nullable=False,
@@ -172,9 +169,7 @@ class CostCenter(TimestampMixin, Base):
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     department: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    manager_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
-    )
+    manager_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     manager = relationship("User")
 
@@ -198,9 +193,7 @@ class Currency(TimestampMixin, Base):
 
 class ExchangeRate(TimestampMixin, Base):
     __tablename__ = "exchange_rates"
-    __table_args__ = (
-        Index("ix_exchange_rates_pair_date", "from_currency", "to_currency", "effective_date"),
-    )
+    __table_args__ = (Index("ix_exchange_rates_pair_date", "from_currency", "to_currency", "effective_date"),)
 
     from_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     to_currency: Mapped[str] = mapped_column(String(3), nullable=False)
@@ -215,9 +208,7 @@ class Notification(TimestampMixin, Base):
         Index("ix_notifications_is_read", "is_read"),
     )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     type: Mapped[NotificationType] = mapped_column(
         Enum(NotificationType, name="notification_type", native_enum=False), nullable=False
     )

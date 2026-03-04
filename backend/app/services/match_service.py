@@ -3,14 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from typing import List, Optional
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.goods_receipt import GoodsReceipt, GRNLineItem
-from app.models.invoice import Invoice, InvoiceLineItem, InvoiceStatus
-from app.models.matching import MatchResult, MatchStatus, MatchType
-from app.models.purchase_order import POLineItem, PurchaseOrder
 from app.models.config import ToleranceConfig
 from app.models.exception import (
     Exception_,
@@ -18,6 +13,9 @@ from app.models.exception import (
     ExceptionStatus,
     ExceptionType,
 )
+from app.models.invoice import Invoice, InvoiceStatus
+from app.models.matching import MatchResult, MatchStatus, MatchType
+from app.models.purchase_order import POLineItem, PurchaseOrder
 
 
 def _get_active_tolerance(db: Session, vendor_id: uuid.UUID | None = None) -> ToleranceConfig | None:
@@ -26,7 +24,7 @@ def _get_active_tolerance(db: Session, vendor_id: uuid.UUID | None = None) -> To
         vendor_tol = (
             db.query(ToleranceConfig)
             .filter(
-                ToleranceConfig.is_active == True,
+                ToleranceConfig.is_active,
                 ToleranceConfig.scope == "vendor",
                 ToleranceConfig.scope_value == str(vendor_id),
             )
@@ -38,7 +36,7 @@ def _get_active_tolerance(db: Session, vendor_id: uuid.UUID | None = None) -> To
     return (
         db.query(ToleranceConfig)
         .filter(
-            ToleranceConfig.is_active == True,
+            ToleranceConfig.is_active,
             ToleranceConfig.scope == "global",
         )
         .first()
@@ -67,12 +65,7 @@ def auto_link_po_lines(db: Session, invoice_id: uuid.UUID) -> dict:
     """
     from difflib import SequenceMatcher
 
-    invoice = (
-        db.query(Invoice)
-        .options(joinedload(Invoice.line_items))
-        .filter(Invoice.id == invoice_id)
-        .first()
-    )
+    invoice = db.query(Invoice).options(joinedload(Invoice.line_items)).filter(Invoice.id == invoice_id).first()
     if not invoice:
         return {"linked": 0, "error": "Invoice not found"}
 
@@ -123,7 +116,9 @@ def auto_link_po_lines(db: Session, invoice_id: uuid.UUID) -> dict:
         for po_line in po_lines_available:
             inv_total = float(inv_line.line_total)
             po_total = float(po_line.line_total)
-            amt_sim = (1.0 - abs(inv_total - po_total) / max(inv_total, po_total)) if max(inv_total, po_total) > 0 else 0.0
+            amt_sim = (
+                (1.0 - abs(inv_total - po_total) / max(inv_total, po_total)) if max(inv_total, po_total) > 0 else 0.0
+            )
             desc_a = (inv_line.description or "").lower().strip()
             desc_b = (po_line.description or "").lower().strip()
             desc_sim = SequenceMatcher(None, desc_a, desc_b).ratio() if desc_a and desc_b else 0.0
@@ -157,12 +152,7 @@ def run_two_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
 
     Detects exceptions for amount variance, quantity variance, missing PO, etc.
     """
-    invoice = (
-        db.query(Invoice)
-        .options(joinedload(Invoice.line_items))
-        .filter(Invoice.id == invoice_id)
-        .first()
-    )
+    invoice = db.query(Invoice).options(joinedload(Invoice.line_items)).filter(Invoice.id == invoice_id).first()
     if not invoice:
         raise ValueError(f"Invoice {invoice_id} not found")
 
@@ -215,7 +205,9 @@ def run_two_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
 
         po_line = po_line_map.get(li.po_line_id)
         if not po_line:
-            line_details.append({"line": li.line_number, "status": "po_line_not_found", "description": li.description or ""})
+            line_details.append(
+                {"line": li.line_number, "status": "po_line_not_found", "description": li.description or ""}
+            )
             continue
 
         matched_po_ids.add(po_line.po_id)
@@ -237,7 +229,12 @@ def run_two_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
         exceptions_for_line = []
         if not amount_ok:
             status_parts.append("amount_variance")
-            exceptions_for_line.append({"type": "amount_variance", "variance": f"${abs(inv_total - po_total):.2f} ({abs(amt_variance_pct):.1f}%)"})
+            exceptions_for_line.append(
+                {
+                    "type": "amount_variance",
+                    "variance": f"${abs(inv_total - po_total):.2f} ({abs(amt_variance_pct):.1f}%)",
+                }
+            )
             exc = Exception_(
                 invoice_id=invoice.id,
                 exception_type=ExceptionType.amount_variance,
@@ -248,7 +245,12 @@ def run_two_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
             exceptions_created.append(exc)
         if not qty_ok:
             status_parts.append("quantity_variance")
-            exceptions_for_line.append({"type": "quantity_variance", "variance": f"{abs(inv_qty - po_qty):.0f} units ({abs(qty_variance_pct):.1f}%)"})
+            exceptions_for_line.append(
+                {
+                    "type": "quantity_variance",
+                    "variance": f"{abs(inv_qty - po_qty):.0f} units ({abs(qty_variance_pct):.1f}%)",
+                }
+            )
             exc = Exception_(
                 invoice_id=invoice.id,
                 exception_type=ExceptionType.quantity_variance,
@@ -261,18 +263,20 @@ def run_two_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
         if line_matched:
             matched_count += 1
 
-        line_details.append({
-            "line": li.line_number,
-            "description": li.description or "",
-            "status": "matched" if line_matched else ", ".join(status_parts),
-            "invoice": {"quantity": inv_qty, "unit_price": inv_price, "line_total": inv_total},
-            "po": {"quantity": po_qty, "unit_price": po_price, "line_total": po_total},
-            "checks": {
-                "amount": {"match": amount_ok, "variance_pct": round(amt_variance_pct, 1)},
-                "quantity": {"match": qty_ok, "variance_pct": round(qty_variance_pct, 1)},
-            },
-            "exceptions": exceptions_for_line,
-        })
+        line_details.append(
+            {
+                "line": li.line_number,
+                "description": li.description or "",
+                "status": "matched" if line_matched else ", ".join(status_parts),
+                "invoice": {"quantity": inv_qty, "unit_price": inv_price, "line_total": inv_total},
+                "po": {"quantity": po_qty, "unit_price": po_price, "line_total": po_total},
+                "checks": {
+                    "amount": {"match": amount_ok, "variance_pct": round(amt_variance_pct, 1)},
+                    "quantity": {"match": qty_ok, "variance_pct": round(qty_variance_pct, 1)},
+                },
+                "exceptions": exceptions_for_line,
+            }
+        )
 
     total_lines = len(invoice.line_items)
     score = (matched_count / total_lines * 100) if total_lines else 0.0
@@ -319,12 +323,7 @@ def run_three_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
     4. Compare invoice qty/amount vs PO and invoice qty vs GRN received qty
     5. Create exceptions for variances
     """
-    invoice = (
-        db.query(Invoice)
-        .options(joinedload(Invoice.line_items))
-        .filter(Invoice.id == invoice_id)
-        .first()
-    )
+    invoice = db.query(Invoice).options(joinedload(Invoice.line_items)).filter(Invoice.id == invoice_id).first()
     if not invoice:
         raise ValueError(f"Invoice {invoice_id} not found")
 
@@ -341,12 +340,14 @@ def run_three_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
             tolerance_applied=False,
         )
         db.add(result)
-        db.add(Exception_(
-            invoice_id=invoice.id,
-            exception_type=ExceptionType.missing_po,
-            severity=ExceptionSeverity.high,
-            status=ExceptionStatus.open,
-        ))
+        db.add(
+            Exception_(
+                invoice_id=invoice.id,
+                exception_type=ExceptionType.missing_po,
+                severity=ExceptionSeverity.high,
+                status=ExceptionStatus.open,
+            )
+        )
         invoice.status = InvoiceStatus.exception
         db.commit()
         db.refresh(result)
@@ -354,10 +355,7 @@ def run_three_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
 
     # Load PO lines with their GRN line items
     po_lines = (
-        db.query(POLineItem)
-        .options(joinedload(POLineItem.grn_line_items))
-        .filter(POLineItem.id.in_(po_line_ids))
-        .all()
+        db.query(POLineItem).options(joinedload(POLineItem.grn_line_items)).filter(POLineItem.id.in_(po_line_ids)).all()
     )
     po_line_map = {pl.id: pl for pl in po_lines}
 
@@ -378,7 +376,9 @@ def run_three_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
 
         po_line = po_line_map.get(li.po_line_id)
         if not po_line:
-            line_details.append({"line": li.line_number, "status": "po_line_not_found", "description": li.description or ""})
+            line_details.append(
+                {"line": li.line_number, "status": "po_line_not_found", "description": li.description or ""}
+            )
             continue
 
         matched_po_ids.add(po_line.po_id)
@@ -413,50 +413,73 @@ def run_three_way_match(db: Session, invoice_id: uuid.UUID) -> MatchResult:
         exceptions_for_line = []
         if not amount_ok:
             status_parts.append("amount_variance")
-            exceptions_for_line.append({"type": "amount_variance", "variance": f"${abs(inv_total - po_total):.2f} ({abs(amt_variance_pct):.1f}%)"})
-            db.add(Exception_(
-                invoice_id=invoice.id,
-                exception_type=ExceptionType.amount_variance,
-                severity=ExceptionSeverity.medium,
-                status=ExceptionStatus.open,
-            ))
+            exceptions_for_line.append(
+                {
+                    "type": "amount_variance",
+                    "variance": f"${abs(inv_total - po_total):.2f} ({abs(amt_variance_pct):.1f}%)",
+                }
+            )
+            db.add(
+                Exception_(
+                    invoice_id=invoice.id,
+                    exception_type=ExceptionType.amount_variance,
+                    severity=ExceptionSeverity.medium,
+                    status=ExceptionStatus.open,
+                )
+            )
         if not qty_ok:
             status_parts.append("quantity_variance")
-            exceptions_for_line.append({"type": "quantity_variance", "variance": f"{abs(inv_qty - po_qty):.0f} units ({abs(qty_variance_pct):.1f}%)"})
-            db.add(Exception_(
-                invoice_id=invoice.id,
-                exception_type=ExceptionType.quantity_variance,
-                severity=ExceptionSeverity.medium,
-                status=ExceptionStatus.open,
-            ))
+            exceptions_for_line.append(
+                {
+                    "type": "quantity_variance",
+                    "variance": f"{abs(inv_qty - po_qty):.0f} units ({abs(qty_variance_pct):.1f}%)",
+                }
+            )
+            db.add(
+                Exception_(
+                    invoice_id=invoice.id,
+                    exception_type=ExceptionType.quantity_variance,
+                    severity=ExceptionSeverity.medium,
+                    status=ExceptionStatus.open,
+                )
+            )
         if not grn_ok:
             status_parts.append("partial_delivery_overrun")
-            exceptions_for_line.append({"type": "partial_delivery_overrun", "variance": f"{abs(inv_qty - total_received):.0f} units ({abs(grn_variance_pct):.1f}%)"})
-            db.add(Exception_(
-                invoice_id=invoice.id,
-                exception_type=ExceptionType.partial_delivery_overrun,
-                severity=ExceptionSeverity.medium,
-                status=ExceptionStatus.open,
-            ))
+            exceptions_for_line.append(
+                {
+                    "type": "partial_delivery_overrun",
+                    "variance": f"{abs(inv_qty - total_received):.0f} units ({abs(grn_variance_pct):.1f}%)",
+                }
+            )
+            db.add(
+                Exception_(
+                    invoice_id=invoice.id,
+                    exception_type=ExceptionType.partial_delivery_overrun,
+                    severity=ExceptionSeverity.medium,
+                    status=ExceptionStatus.open,
+                )
+            )
 
         line_matched = amount_ok and qty_ok and grn_ok
         if line_matched:
             matched_count += 1
 
-        line_details.append({
-            "line": li.line_number,
-            "description": li.description or "",
-            "status": "matched" if line_matched else ", ".join(status_parts),
-            "invoice": {"quantity": inv_qty, "unit_price": inv_price, "line_total": inv_total},
-            "po": {"quantity": po_qty, "unit_price": po_price, "line_total": po_total},
-            "grn": {"quantity_received": total_received, "grn_count": len(grn_lines)},
-            "checks": {
-                "amount": {"match": amount_ok, "variance_pct": round(amt_variance_pct, 1)},
-                "quantity": {"match": qty_ok, "variance_pct": round(qty_variance_pct, 1)},
-                "grn_receipt": {"match": grn_ok, "variance_pct": round(grn_variance_pct, 1)},
-            },
-            "exceptions": exceptions_for_line,
-        })
+        line_details.append(
+            {
+                "line": li.line_number,
+                "description": li.description or "",
+                "status": "matched" if line_matched else ", ".join(status_parts),
+                "invoice": {"quantity": inv_qty, "unit_price": inv_price, "line_total": inv_total},
+                "po": {"quantity": po_qty, "unit_price": po_price, "line_total": po_total},
+                "grn": {"quantity_received": total_received, "grn_count": len(grn_lines)},
+                "checks": {
+                    "amount": {"match": amount_ok, "variance_pct": round(amt_variance_pct, 1)},
+                    "quantity": {"match": qty_ok, "variance_pct": round(qty_variance_pct, 1)},
+                    "grn_receipt": {"match": grn_ok, "variance_pct": round(grn_variance_pct, 1)},
+                },
+                "exceptions": exceptions_for_line,
+            }
+        )
 
     total_lines = len(invoice.line_items)
     score = (matched_count / total_lines * 100) if total_lines else 0.0

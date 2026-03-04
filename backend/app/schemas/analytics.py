@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
-
 from pydantic import BaseModel
 
 
@@ -25,18 +23,18 @@ class FunnelStage(BaseModel):
 
 
 class FunnelData(BaseModel):
-    stages: List[FunnelStage] = []
+    stages: list[FunnelStage] = []
 
 
 class TrendPoint(BaseModel):
     date: str
     value: float
-    label: Optional[str] = None
+    label: str | None = None
 
 
 class TrendData(BaseModel):
     series_name: str
-    data_points: List[TrendPoint] = []
+    data_points: list[TrendPoint] = []
 
 
 class VendorSummary(BaseModel):
@@ -55,7 +53,7 @@ class AgingBucket(BaseModel):
 
 
 class AgingData(BaseModel):
-    buckets: List[AgingBucket]
+    buckets: list[AgingBucket]
 
 
 class ExceptionBreakdown(BaseModel):

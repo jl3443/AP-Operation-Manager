@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -15,12 +15,11 @@ from app.models.goods_receipt import GRNLineItem
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.resolution import (
     ActionStatus,
-    AutomationAction,
     PlanStatus,
     ResolutionPlan,
 )
 from app.services import audit_service
-from app.services.action_handlers import get_handler, run_handler_safe
+from app.services.action_handlers import run_handler_safe
 from app.services.ai_exception_resolver import generate_resolution_plan
 
 logger = logging.getLogger(__name__)
@@ -68,12 +67,14 @@ def execute(db: Session, plan_id: uuid.UUID) -> dict:
     for action in actions:
         # Skip already-completed or failed actions
         if action.status in (ActionStatus.done, ActionStatus.failed, ActionStatus.skipped):
-            executed.append({
-                "step_id": action.step_id,
-                "action_type": action.action_type,
-                "status": action.status.value,
-                "result": action.result_json,
-            })
+            executed.append(
+                {
+                    "step_id": action.step_id,
+                    "action_type": action.action_type,
+                    "status": action.status.value,
+                    "result": action.result_json,
+                }
+            )
             continue
 
         # Execute ALL actions (including requires_human_approval ones)
@@ -89,17 +90,19 @@ def execute(db: Session, plan_id: uuid.UUID) -> dict:
             action.status = ActionStatus.failed
             action.error_message = error
             db.commit()
-            executed.append({
-                "step_id": action.step_id,
-                "action_type": action.action_type,
-                "status": "failed",
-                "error": error,
-            })
+            executed.append(
+                {
+                    "step_id": action.step_id,
+                    "action_type": action.action_type,
+                    "status": "failed",
+                    "error": error,
+                }
+            )
             continue
 
         action.status = ActionStatus.done
         action.result_json = result
-        action.executed_at = datetime.now(timezone.utc)
+        action.executed_at = datetime.now(UTC)
         db.commit()
 
         audit_service.log_action(
@@ -117,12 +120,14 @@ def execute(db: Session, plan_id: uuid.UUID) -> dict:
         )
         db.commit()
 
-        executed.append({
-            "step_id": action.step_id,
-            "action_type": action.action_type,
-            "status": "done",
-            "result": result,
-        })
+        executed.append(
+            {
+                "step_id": action.step_id,
+                "action_type": action.action_type,
+                "status": "done",
+                "result": result,
+            }
+        )
 
     # Update plan status
     all_done = all(a.status in (ActionStatus.done, ActionStatus.skipped) for a in actions)
@@ -151,12 +156,7 @@ def recheck(db: Session, exception_id: uuid.UUID) -> dict:
     if not exc:
         raise ValueError(f"Exception {exception_id} not found")
 
-    inv = (
-        db.query(Invoice)
-        .options(joinedload(Invoice.line_items))
-        .filter(Invoice.id == exc.invoice_id)
-        .first()
-    )
+    inv = db.query(Invoice).options(joinedload(Invoice.line_items)).filter(Invoice.id == exc.invoice_id).first()
     if not inv:
         raise ValueError("Invoice not found for exception")
 
@@ -170,11 +170,7 @@ def recheck(db: Session, exception_id: uuid.UUID) -> dict:
     po_line_ids = [li.po_line_id for li in inv.line_items if li.po_line_id]
     use_three_way = False
     if po_line_ids:
-        grn_count = (
-            db.query(func.count(GRNLineItem.id))
-            .filter(GRNLineItem.po_line_id.in_(po_line_ids))
-            .scalar()
-        ) or 0
+        grn_count = (db.query(func.count(GRNLineItem.id)).filter(GRNLineItem.po_line_id.in_(po_line_ids)).scalar()) or 0
         use_three_way = grn_count > 0
 
     if use_three_way:
@@ -190,7 +186,7 @@ def recheck(db: Session, exception_id: uuid.UUID) -> dict:
         exc.status = ExceptionStatus.resolved
         exc.resolution_type = ResolutionType.auto_resolved
         exc.resolution_notes = f"Resolved after recheck (score: {result.overall_score}%)"
-        exc.resolved_at = datetime.now(timezone.utc)
+        exc.resolved_at = datetime.now(UTC)
 
         if inv.status == InvoiceStatus.exception:
             inv.status = InvoiceStatus.pending_approval

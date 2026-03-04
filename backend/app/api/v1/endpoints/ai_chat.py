@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -18,7 +16,7 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
-    conversation_id: Optional[str] = Field(None, max_length=64)
+    conversation_id: str | None = Field(None, max_length=64)
 
 
 class ChatResponse(BaseModel):

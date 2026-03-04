@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -12,9 +11,9 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.approval import ApprovalStatus, ApprovalTask
 from app.models.exception import Exception_, ExceptionStatus
 from app.models.goods_receipt import GoodsReceipt, GRNLineItem
-from app.models.invoice import Invoice, InvoiceLineItem, InvoiceStatus
+from app.models.invoice import Invoice, InvoiceStatus
 from app.models.matching import MatchResult
-from app.models.purchase_order import POLineItem, PurchaseOrder
+from app.models.purchase_order import PurchaseOrder
 from app.models.vendor import Vendor
 from app.services.ai_service import ai_service
 
@@ -62,21 +61,9 @@ MAX_CONVERSATIONS = 100
 def _get_system_stats(db: Session) -> str:
     """Query live stats and full dataset context to embed in the system prompt."""
     total_invoices = db.query(Invoice).count()
-    pending_approval = (
-        db.query(Invoice)
-        .filter(Invoice.status == InvoiceStatus.pending_approval)
-        .count()
-    )
-    open_exceptions = (
-        db.query(Exception_)
-        .filter(Exception_.status == ExceptionStatus.open)
-        .count()
-    )
-    pending_tasks = (
-        db.query(ApprovalTask)
-        .filter(ApprovalTask.status == ApprovalStatus.pending)
-        .count()
-    )
+    pending_approval = db.query(Invoice).filter(Invoice.status == InvoiceStatus.pending_approval).count()
+    open_exceptions = db.query(Exception_).filter(Exception_.status == ExceptionStatus.open).count()
+    pending_tasks = db.query(ApprovalTask).filter(ApprovalTask.status == ApprovalStatus.pending).count()
     active_vendors = db.query(Vendor).filter(Vendor.status == "active").count()
 
     total_pending_amount = (
@@ -86,14 +73,8 @@ def _get_system_stats(db: Session) -> str:
     )
 
     # Status breakdown
-    status_counts = (
-        db.query(Invoice.status, func.count(Invoice.id))
-        .group_by(Invoice.status)
-        .all()
-    )
-    status_breakdown = ", ".join(
-        f"{s.value}: {c}" for s, c in status_counts
-    )
+    status_counts = db.query(Invoice.status, func.count(Invoice.id)).group_by(Invoice.status).all()
+    status_breakdown = ", ".join(f"{s.value}: {c}" for s, c in status_counts)
 
     # Exception breakdown
     exc_counts = (
@@ -102,9 +83,7 @@ def _get_system_stats(db: Session) -> str:
         .group_by(Exception_.exception_type)
         .all()
     )
-    exc_breakdown = ", ".join(
-        f"{t.value}: {c}" for t, c in exc_counts
-    ) or "none"
+    exc_breakdown = ", ".join(f"{t.value}: {c}" for t, c in exc_counts) or "none"
 
     stats = (
         f"=== LIVE SYSTEM STATS ===\n"
@@ -128,11 +107,7 @@ def _get_system_stats(db: Session) -> str:
             f"Terms: {v.payment_terms_code} | Status: {v.status.value} | "
             f"Risk: {v.risk_level.value}"
         )
-    stats += (
-        f"\n=== VENDOR MASTER DATA ({len(vendors)} records) ===\n"
-        + "\n".join(vendor_lines)
-        + "\n"
-    )
+    stats += f"\n=== VENDOR MASTER DATA ({len(vendors)} records) ===\n" + "\n".join(vendor_lines) + "\n"
 
     # ── Purchase Order Data ────────────────────────────────────────
     pos = (
@@ -146,7 +121,7 @@ def _get_system_stats(db: Session) -> str:
         vendor_name = po.vendor.name if po.vendor else "Unknown"
         line_count = len(po.line_items) if po.line_items else 0
         line_details = []
-        for li in (po.line_items or []):
+        for li in po.line_items or []:
             line_details.append(
                 f"    Line {li.line_number}: {li.description} | "
                 f"Qty: {li.quantity_ordered} | Price: ${float(li.unit_price):,.2f} | "
@@ -160,11 +135,7 @@ def _get_system_stats(db: Session) -> str:
             f"{line_count} line items"
         )
         po_lines.extend(line_details)
-    stats += (
-        f"\n=== PURCHASE ORDER DATA ({len(pos)} records) ===\n"
-        + "\n".join(po_lines)
-        + "\n"
-    )
+    stats += f"\n=== PURCHASE ORDER DATA ({len(pos)} records) ===\n" + "\n".join(po_lines) + "\n"
 
     # ── Goods Receipt (GRN) Data ───────────────────────────────────
     grns = (
@@ -183,11 +154,10 @@ def _get_system_stats(db: Session) -> str:
         po_num = grn.purchase_order.po_number if grn.purchase_order else "N/A"
         line_count = len(grn.line_items) if grn.line_items else 0
         line_details = []
-        for li in (grn.line_items or []):
+        for li in grn.line_items or []:
             desc = li.po_line.description if li.po_line else "N/A"
             line_details.append(
-                f"    Line: {desc} | Qty Received: {li.quantity_received} | "
-                f"Notes: {li.condition_notes or 'N/A'}"
+                f"    Line: {desc} | Qty Received: {li.quantity_received} | Notes: {li.condition_notes or 'N/A'}"
             )
         grn_lines.append(
             f"  {grn.grn_number} | PO: {po_num} | Vendor: {vendor_name} | "
@@ -195,11 +165,7 @@ def _get_system_stats(db: Session) -> str:
             f"{line_count} line items"
         )
         grn_lines.extend(line_details)
-    stats += (
-        f"\n=== GOODS RECEIPT (GRN) DATA ({len(grns)} records) ===\n"
-        + "\n".join(grn_lines)
-        + "\n"
-    )
+    stats += f"\n=== GOODS RECEIPT (GRN) DATA ({len(grns)} records) ===\n" + "\n".join(grn_lines) + "\n"
 
     # ── Invoice Data (with line items and file info) ────────────────
     invs = (
@@ -225,18 +191,14 @@ def _get_system_stats(db: Session) -> str:
             f"OCR: {ocr_conf} | {file_info}"
         )
         # Include line items for each invoice
-        for li in (inv.line_items or []):
+        for li in inv.line_items or []:
             gl_info = f"GL: {li.ai_gl_prediction} ({li.ai_confidence:.0%})" if li.ai_gl_prediction else "GL: N/A"
             inv_lines.append(
                 f"    Line {li.line_number}: {li.description} | "
                 f"Qty: {li.quantity} x ${float(li.unit_price):,.2f} = ${float(li.line_total):,.2f} | "
                 f"{gl_info}"
             )
-    stats += (
-        f"\n=== INVOICE DATA ({len(invs)} records, with line items) ===\n"
-        + "\n".join(inv_lines)
-        + "\n"
-    )
+    stats += f"\n=== INVOICE DATA ({len(invs)} records, with line items) ===\n" + "\n".join(inv_lines) + "\n"
 
     # ── Exception Details ──────────────────────────────────────────
     exceptions = (
@@ -254,11 +216,7 @@ def _get_system_stats(db: Session) -> str:
             f"    AI Suggestion: {exc.ai_suggested_resolution or 'N/A'}"
         )
     if exc_lines:
-        stats += (
-            f"\n=== OPEN EXCEPTIONS ({len(exceptions)} records) ===\n"
-            + "\n".join(exc_lines)
-            + "\n"
-        )
+        stats += f"\n=== OPEN EXCEPTIONS ({len(exceptions)} records) ===\n" + "\n".join(exc_lines) + "\n"
 
     # ── Match Results ──────────────────────────────────────────────
     matches = (
@@ -278,11 +236,7 @@ def _get_system_stats(db: Session) -> str:
             f"Type: {m.match_type.value} | Status: {m.match_status.value} | "
             f"Score: {m.overall_score}%"
         )
-    stats += (
-        f"\n=== MATCH RESULTS ({len(matches)} records) ===\n"
-        + "\n".join(match_lines)
-        + "\n"
-    )
+    stats += f"\n=== MATCH RESULTS ({len(matches)} records) ===\n" + "\n".join(match_lines) + "\n"
 
     return stats
 
@@ -300,8 +254,8 @@ def _conv_key(user_id: str, conversation_id: str) -> str:
 def chat(
     db: Session,
     message: str,
-    conversation_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    conversation_id: str | None = None,
+    user_id: str | None = None,
 ) -> dict[str, str]:
     """Process a chat message and return the AI response.
 
@@ -338,6 +292,7 @@ def chat(
     stats = _get_system_stats(db)
     try:
         from app.services.knowledge_base import get_rules_for_context
+
         kb_context = get_rules_for_context(db)
     except Exception:
         kb_context = ""

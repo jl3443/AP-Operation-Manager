@@ -7,7 +7,7 @@ built from parsed documents.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -43,9 +43,9 @@ def get_all_documents(db: Session) -> list[dict[str, Any]]:
 
 def get_all_rules(
     db: Session,
-    rule_type: Optional[str] = None,
-    status: Optional[str] = None,
-    document_id: Optional[str] = None,
+    rule_type: str | None = None,
+    status: str | None = None,
+    document_id: str | None = None,
     min_confidence: float = 0.0,
 ) -> list[dict[str, Any]]:
     """Return policy rules with optional filters."""
@@ -84,22 +84,14 @@ def get_knowledge_summary(db: Session) -> dict[str, Any]:
     total_docs = db.query(func.count(PolicyDocument.id)).scalar() or 0
     total_rules = db.query(func.count(PolicyRule.id)).scalar() or 0
     pending_rules = (
-        db.query(func.count(PolicyRule.id))
-        .filter(PolicyRule.status == PolicyRuleStatus.pending)
-        .scalar() or 0
+        db.query(func.count(PolicyRule.id)).filter(PolicyRule.status == PolicyRuleStatus.pending).scalar() or 0
     )
     approved_rules = (
-        db.query(func.count(PolicyRule.id))
-        .filter(PolicyRule.status == PolicyRuleStatus.approved)
-        .scalar() or 0
+        db.query(func.count(PolicyRule.id)).filter(PolicyRule.status == PolicyRuleStatus.approved).scalar() or 0
     )
 
     # Rule types breakdown
-    type_counts = (
-        db.query(PolicyRule.rule_type, func.count(PolicyRule.id))
-        .group_by(PolicyRule.rule_type)
-        .all()
-    )
+    type_counts = db.query(PolicyRule.rule_type, func.count(PolicyRule.id)).group_by(PolicyRule.rule_type).all()
 
     # Document types breakdown
     doc_type_counts = (
@@ -129,10 +121,7 @@ def search_rules(db: Session, query: str) -> list[dict[str, Any]]:
     results = (
         db.query(PolicyRule)
         .join(PolicyDocument)
-        .filter(
-            PolicyRule.source_text.ilike(f"%{query}%")
-            | PolicyRule.rule_type.ilike(f"%{query}%")
-        )
+        .filter(PolicyRule.source_text.ilike(f"%{query}%") | PolicyRule.rule_type.ilike(f"%{query}%"))
         .order_by(PolicyRule.confidence.desc())
         .limit(50)
         .all()
@@ -154,7 +143,7 @@ def search_rules(db: Session, query: str) -> list[dict[str, Any]]:
     ]
 
 
-def approve_rule(db: Session, rule_id: str, reviewer_id: Optional[str] = None) -> dict[str, Any]:
+def approve_rule(db: Session, rule_id: str, reviewer_id: str | None = None) -> dict[str, Any]:
     """Approve a pending policy rule."""
     rule = db.query(PolicyRule).filter(PolicyRule.id == rule_id).first()
     if not rule:
@@ -168,9 +157,7 @@ def approve_rule(db: Session, rule_id: str, reviewer_id: Optional[str] = None) -
     return {"id": str(rule.id), "status": "approved"}
 
 
-def reject_rule(
-    db: Session, rule_id: str, reviewer_id: Optional[str] = None, notes: Optional[str] = None
-) -> dict[str, Any]:
+def reject_rule(db: Session, rule_id: str, reviewer_id: str | None = None, notes: str | None = None) -> dict[str, Any]:
     """Reject a policy rule."""
     rule = db.query(PolicyRule).filter(PolicyRule.id == rule_id).first()
     if not rule:

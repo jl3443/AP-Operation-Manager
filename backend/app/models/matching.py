@@ -13,12 +13,12 @@ from app.core.database import Base
 from app.models.base import TimestampMixin
 
 
-class MatchType(str, enum.Enum):
+class MatchType(enum.StrEnum):
     two_way = "two_way"
     three_way = "three_way"
 
 
-class MatchStatus(str, enum.Enum):
+class MatchStatus(enum.StrEnum):
     matched = "matched"
     partial = "partial"
     unmatched = "unmatched"
@@ -32,12 +32,8 @@ class MatchResult(TimestampMixin, Base):
         Index("ix_match_results_match_status", "match_status"),
     )
 
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False
-    )
-    match_type: Mapped[MatchType] = mapped_column(
-        Enum(MatchType, name="match_type", native_enum=False), nullable=False
-    )
+    invoice_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False)
+    match_type: Mapped[MatchType] = mapped_column(Enum(MatchType, name="match_type", native_enum=False), nullable=False)
     match_status: Mapped[MatchStatus] = mapped_column(
         Enum(MatchStatus, name="match_status", native_enum=False), nullable=False
     )

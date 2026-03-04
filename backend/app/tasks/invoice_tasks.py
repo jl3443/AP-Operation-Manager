@@ -7,7 +7,7 @@ duplicate detection scans, and auto-resolution.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
@@ -29,11 +29,7 @@ def run_batch_matching() -> dict:
 
     db = SessionLocal()
     try:
-        invoices = (
-            db.query(Invoice)
-            .filter(Invoice.status == InvoiceStatus.extracted)
-            .all()
-        )
+        invoices = db.query(Invoice).filter(Invoice.status == InvoiceStatus.extracted).all()
 
         results = {"processed": 0, "matched": 0, "exceptions": 0, "errors": []}
 
@@ -95,7 +91,7 @@ def run_duplicate_scan() -> dict:
 
     db = SessionLocal()
     try:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        cutoff = datetime.now(UTC) - timedelta(days=30)
         recent_invoices = (
             db.query(Invoice)
             .filter(
@@ -116,11 +112,13 @@ def run_duplicate_scan() -> dict:
                 exclude_invoice_id=str(invoice.id),
             )
             if result["is_duplicate"]:
-                duplicates_found.append({
-                    "invoice_id": str(invoice.id),
-                    "invoice_number": invoice.invoice_number,
-                    "matches": result["matches"],
-                })
+                duplicates_found.append(
+                    {
+                        "invoice_id": str(invoice.id),
+                        "invoice_number": invoice.invoice_number,
+                        "matches": result["matches"],
+                    }
+                )
 
         logger.info(
             f"Duplicate scan complete: {len(recent_invoices)} checked, "
@@ -161,8 +159,7 @@ def execute_resolution_plan_auto(exception_id: str) -> dict:
         # 3. Execute until blocked at human-approval step
         result = resolution_orchestrator.execute(db, plan.id)
         logger.info(
-            f"Auto-executed plan {plan.id}: status={result['plan_status']}, "
-            f"blocked_at={result.get('blocked_at')}"
+            f"Auto-executed plan {plan.id}: status={result['plan_status']}, blocked_at={result.get('blocked_at')}"
         )
 
         return {
@@ -216,16 +213,16 @@ def generate_resolution_plans_batch() -> dict:
     db = SessionLocal()
     try:
         # Find open/assigned exceptions without a resolution plan
-        exceptions_with_plans = (
-            db.query(ResolutionPlan.exception_id).distinct()
-        )
+        exceptions_with_plans = db.query(ResolutionPlan.exception_id).distinct()
         open_exceptions = (
             db.query(Exception_)
             .filter(
-                Exception_.status.in_([
-                    ExceptionStatus.open,
-                    ExceptionStatus.assigned,
-                ]),
+                Exception_.status.in_(
+                    [
+                        ExceptionStatus.open,
+                        ExceptionStatus.assigned,
+                    ]
+                ),
                 ~Exception_.id.in_(exceptions_with_plans),
             )
             .all()
@@ -240,10 +237,7 @@ def generate_resolution_plans_batch() -> dict:
                 results["errors"].append(f"Exception {exc.id}: {e}")
                 logger.error(f"Plan generation failed for exception {exc.id}: {e}")
 
-        logger.info(
-            f"Batch plan generation: {results['planned']} plans created, "
-            f"{len(results['errors'])} errors"
-        )
+        logger.info(f"Batch plan generation: {results['planned']} plans created, {len(results['errors'])} errors")
         return results
     except Exception:
         db.rollback()
@@ -260,7 +254,6 @@ def generate_daily_report() -> dict:
     """
     from sqlalchemy import func
 
-    from app.models.approval import ApprovalStatus, ApprovalTask
     from app.models.exception import Exception_, ExceptionStatus
     from app.models.invoice import Invoice, InvoiceStatus
 
@@ -268,9 +261,9 @@ def generate_daily_report() -> dict:
     try:
         total_invoices = db.query(Invoice).count()
         pending = db.query(Invoice).filter(Invoice.status == InvoiceStatus.pending_approval).count()
-        exceptions = db.query(Exception_).filter(
-            Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned])
-        ).count()
+        exceptions = (
+            db.query(Exception_).filter(Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned])).count()
+        )
 
         pending_amount = (
             db.query(func.coalesce(func.sum(Invoice.total_amount), 0))
@@ -288,7 +281,7 @@ def generate_daily_report() -> dict:
         )
 
         report = {
-            "date": datetime.now(timezone.utc).isoformat(),
+            "date": datetime.now(UTC).isoformat(),
             "total_invoices": total_invoices,
             "pending_approval": pending,
             "pending_amount": float(pending_amount),

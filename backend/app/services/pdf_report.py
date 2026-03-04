@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from io import BytesIO
-from typing import List, Tuple
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -36,8 +35,8 @@ BORDER_COLOR = colors.HexColor("#cbd5e1")
 
 
 def _build_table(
-    data: List[List[str]],
-    col_widths: List[float] | None = None,
+    data: list[list[str]],
+    col_widths: list[float] | None = None,
 ) -> Table:
     """Build a styled Table with dark header and alternating rows."""
     table = Table(data, colWidths=col_widths, repeatRows=1)
@@ -138,29 +137,18 @@ def generate_analytics_pdf(
         or 0
     )
     pending_approval = (
-        db.query(func.count(Invoice.id))
-        .filter(Invoice.status == InvoiceStatus.pending_approval)
-        .scalar()
-        or 0
+        db.query(func.count(Invoice.id)).filter(Invoice.status == InvoiceStatus.pending_approval).scalar() or 0
     )
     open_exceptions = (
         db.query(func.count(Exception_.id))
-        .filter(
-            Exception_.status.in_(
-                [ExceptionStatus.open, ExceptionStatus.assigned, ExceptionStatus.in_progress]
-            )
-        )
+        .filter(Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned, ExceptionStatus.in_progress]))
         .scalar()
         or 0
     )
     total_matched = db.query(func.count(MatchResult.id)).scalar() or 0
     fully_matched = (
         db.query(func.count(MatchResult.id))
-        .filter(
-            MatchResult.match_status.in_(
-                [MatchStatus.matched, MatchStatus.tolerance_passed]
-            )
-        )
+        .filter(MatchResult.match_status.in_([MatchStatus.matched, MatchStatus.tolerance_passed]))
         .scalar()
         or 0
     )
@@ -184,15 +172,9 @@ def generate_analytics_pdf(
     funnel_data: list = [["Status", "Count", "Amount"]]
     for s in InvoiceStatus:
         cnt = db.query(func.count(Invoice.id)).filter(Invoice.status == s).scalar() or 0
-        amt = (
-            db.query(func.coalesce(func.sum(Invoice.total_amount), 0))
-            .filter(Invoice.status == s)
-            .scalar()
-        )
+        amt = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).filter(Invoice.status == s).scalar()
         funnel_data.append([s.value, str(cnt), f"${float(amt):,.2f}"])
-    elements.append(
-        _build_table(funnel_data, col_widths=[2.5 * inch, 2 * inch, 2 * inch])
-    )
+    elements.append(_build_table(funnel_data, col_widths=[2.5 * inch, 2 * inch, 2 * inch]))
     elements.append(Spacer(1, 16))
 
     # ------------------------------------------------------------------
@@ -213,9 +195,7 @@ def generate_analytics_pdf(
         etype = r.exception_type.value if hasattr(r.exception_type, "value") else str(r.exception_type)
         pct = round(r.cnt / exc_total * 100, 1)
         exc_data.append([etype, str(r.cnt), f"{pct}%"])
-    elements.append(
-        _build_table(exc_data, col_widths=[2.5 * inch, 2 * inch, 2 * inch])
-    )
+    elements.append(_build_table(exc_data, col_widths=[2.5 * inch, 2 * inch, 2 * inch]))
     elements.append(Spacer(1, 16))
 
     # ------------------------------------------------------------------
@@ -237,9 +217,7 @@ def generate_analytics_pdf(
     vendor_data: list = [["Vendor Name", "Invoice Count", "Total Amount"]]
     for r in vendor_rows:
         vendor_data.append([r.name, str(r.invoice_count), f"${float(r.total_amount):,.2f}"])
-    elements.append(
-        _build_table(vendor_data, col_widths=[2.5 * inch, 2 * inch, 2 * inch])
-    )
+    elements.append(_build_table(vendor_data, col_widths=[2.5 * inch, 2 * inch, 2 * inch]))
     elements.append(Spacer(1, 24))
 
     # ------------------------------------------------------------------

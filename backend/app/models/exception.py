@@ -6,7 +6,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,7 +14,7 @@ from app.core.database import Base
 from app.models.base import TimestampMixin
 
 
-class ExceptionType(str, enum.Enum):
+class ExceptionType(enum.StrEnum):
     missing_po = "missing_po"
     amount_variance = "amount_variance"
     quantity_variance = "quantity_variance"
@@ -29,14 +29,14 @@ class ExceptionType(str, enum.Enum):
     partial_delivery_overrun = "partial_delivery_overrun"
 
 
-class ExceptionSeverity(str, enum.Enum):
+class ExceptionSeverity(enum.StrEnum):
     low = "low"
     medium = "medium"
     high = "high"
     critical = "critical"
 
 
-class ExceptionStatus(str, enum.Enum):
+class ExceptionStatus(enum.StrEnum):
     open = "open"
     assigned = "assigned"
     in_progress = "in_progress"
@@ -44,7 +44,7 @@ class ExceptionStatus(str, enum.Enum):
     escalated = "escalated"
 
 
-class ResolutionType(str, enum.Enum):
+class ResolutionType(enum.StrEnum):
     auto_resolved = "auto_resolved"
     manual_override = "manual_override"
     vendor_credit = "vendor_credit"
@@ -64,9 +64,7 @@ class Exception_(TimestampMixin, Base):
         Index("ix_exceptions_assigned_to", "assigned_to"),
     )
 
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False
-    )
+    invoice_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False)
     exception_type: Mapped[ExceptionType] = mapped_column(
         Enum(ExceptionType, name="exception_type", native_enum=False), nullable=False
     )
@@ -78,17 +76,13 @@ class Exception_(TimestampMixin, Base):
         nullable=False,
         default=ExceptionStatus.open,
     )
-    assigned_to: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
-    )
+    assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     resolution_type: Mapped[ResolutionType | None] = mapped_column(
         Enum(ResolutionType, name="resolution_type", native_enum=False), nullable=True
     )
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # AI-powered analysis fields
     ai_suggested_resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -102,16 +96,12 @@ class Exception_(TimestampMixin, Base):
 
 class ExceptionComment(TimestampMixin, Base):
     __tablename__ = "exception_comments"
-    __table_args__ = (
-        Index("ix_exception_comments_exception_id", "exception_id"),
-    )
+    __table_args__ = (Index("ix_exception_comments_exception_id", "exception_id"),)
 
     exception_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exceptions.id", ondelete="CASCADE"), nullable=False
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     comment_text: Mapped[str] = mapped_column(Text, nullable=False)
     mentions: Mapped[list | None] = mapped_column(JSON, nullable=True)
 

@@ -24,7 +24,7 @@ from app.core.database import Base
 from app.models.base import TimestampMixin
 
 
-class InvoiceStatus(str, enum.Enum):
+class InvoiceStatus(enum.StrEnum):
     draft = "draft"
     extracted = "extracted"
     matching = "matching"
@@ -35,13 +35,13 @@ class InvoiceStatus(str, enum.Enum):
     posted = "posted"
 
 
-class DocumentType(str, enum.Enum):
+class DocumentType(enum.StrEnum):
     invoice = "invoice"
     credit_memo = "credit_memo"
     debit_memo = "debit_memo"
 
 
-class SourceChannel(str, enum.Enum):
+class SourceChannel(enum.StrEnum):
     manual = "manual"
     email = "email"
     api = "api"
@@ -58,9 +58,7 @@ class Invoice(TimestampMixin, Base):
     )
 
     invoice_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    vendor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True
-    )
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -99,9 +97,7 @@ class Invoice(TimestampMixin, Base):
 
 class InvoiceLineItem(TimestampMixin, Base):
     __tablename__ = "invoice_line_items"
-    __table_args__ = (
-        Index("ix_invoice_line_items_invoice_id", "invoice_id"),
-    )
+    __table_args__ = (Index("ix_invoice_line_items_invoice_id", "invoice_id"),)
 
     invoice_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False

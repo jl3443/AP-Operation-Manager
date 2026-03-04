@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -16,8 +15,8 @@ class UserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
     role: UserRole = UserRole.ap_clerk
-    department: Optional[str] = None
-    cost_center_id: Optional[uuid.UUID] = None
+    department: str | None = None
+    cost_center_id: uuid.UUID | None = None
 
 
 class UserLogin(BaseModel):
@@ -30,8 +29,8 @@ class UserResponse(BaseModel):
     email: str
     name: str
     role: UserRole
-    department: Optional[str] = None
-    cost_center_id: Optional[uuid.UUID] = None
+    department: str | None = None
+    cost_center_id: uuid.UUID | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -19,7 +18,7 @@ from app.services import approval_service, audit_service
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 
-@router.get("/pending", response_model=List[ApprovalTaskResponse])
+@router.get("/pending", response_model=list[ApprovalTaskResponse])
 def list_pending(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -47,9 +46,7 @@ def approve_task(
 ):
     """Approve an approval task."""
     try:
-        task = approval_service.process_approval(
-            db, task_id, approved=True, comments=payload.comments
-        )
+        task = approval_service.process_approval(db, task_id, approved=True, comments=payload.comments)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -75,9 +72,7 @@ def reject_task(
 ):
     """Reject an approval task."""
     try:
-        task = approval_service.process_approval(
-            db, task_id, approved=False, comments=payload.comments
-        )
+        task = approval_service.process_approval(db, task_id, approved=False, comments=payload.comments)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -105,9 +100,7 @@ def batch_approve(
     errors: list[str] = []
     for tid in payload.task_ids:
         try:
-            approval_service.process_approval(
-                db, tid, approved=True, comments=payload.comments
-            )
+            approval_service.process_approval(db, tid, approved=True, comments=payload.comments)
             approved += 1
         except ValueError as e:
             errors.append(str(e))
@@ -116,7 +109,7 @@ def batch_approve(
     return {"approved": approved, "errors": errors}
 
 
-@router.get("/history", response_model=List[ApprovalTaskResponse])
+@router.get("/history", response_model=list[ApprovalTaskResponse])
 def approval_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),

@@ -1,0 +1,23 @@
+# CI-specific compose override — no volume mounts, placeholder secrets
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build
+
+services:
+  backend:
+    volumes: []
+    environment:
+      LLM_API_KEY: "ci-placeholder-key"
+      LLM_MODEL: "claude-haiku-4-5-20251001"
+
+  celery-worker:
+    volumes: []
+    environment:
+      LLM_API_KEY: "ci-placeholder-key"
+      LLM_MODEL: "claude-haiku-4-5-20251001"
+
+  frontend:
+    volumes: []
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      BACKEND_URL: http://backend:8000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ci-nextauth-secret

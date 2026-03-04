@@ -1,0 +1,45 @@
+[project]
+name = "ap-operations-manager-backend"
+version = "1.0.0"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function call in argument defaults (FastAPI Depends)
+    "B904",   # raise without from inside except (too noisy for existing code)
+    "UP007",  # use X | Y for union types (not all code uses 3.10+ syntax)
+    "SIM108", # use ternary operator (readability preference)
+    "N806",   # variable in function should be lowercase (constants in functions)
+    "N801",   # class name should use CapWords (Exception_ is intentional)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

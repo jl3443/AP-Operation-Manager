@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from difflib import SequenceMatcher
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -14,9 +13,9 @@ FUZZY_THRESHOLD = 0.85
 
 def auto_match_vendor(
     db: Session,
-    vendor_name: Optional[str] = None,
-    vendor_tax_id: Optional[str] = None,
-) -> Optional[Vendor]:
+    vendor_name: str | None = None,
+    vendor_tax_id: str | None = None,
+) -> Vendor | None:
     """Find the best matching vendor by tax_id (exact) or name (fuzzy).
 
     Returns the matched Vendor or None.
@@ -26,11 +25,7 @@ def auto_match_vendor(
 
     # 1) Exact match on tax_id (most reliable)
     if vendor_tax_id:
-        vendor = (
-            db.query(Vendor)
-            .filter(Vendor.tax_id == vendor_tax_id.strip())
-            .first()
-        )
+        vendor = db.query(Vendor).filter(Vendor.tax_id == vendor_tax_id.strip()).first()
         if vendor:
             return vendor
 
@@ -41,7 +36,7 @@ def auto_match_vendor(
     target = vendor_name.strip().lower()
     vendors = db.query(Vendor).all()
 
-    best_vendor: Optional[Vendor] = None
+    best_vendor: Vendor | None = None
     best_ratio = 0.0
 
     for v in vendors:

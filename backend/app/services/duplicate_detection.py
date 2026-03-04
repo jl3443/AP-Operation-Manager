@@ -8,13 +8,12 @@ Checks incoming invoices against existing records using multiple strategies:
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.models.invoice import Invoice, InvoiceLineItem, InvoiceStatus
+from app.models.invoice import Invoice, InvoiceStatus
 
 
 def check_duplicate(
@@ -54,12 +53,14 @@ def check_duplicate(
     ).all()
 
     for inv in exact:
-        matches.append({
-            "invoice_id": str(inv.id),
-            "invoice_number": inv.invoice_number,
-            "reason": "Exact invoice number and vendor match",
-            "score": 1.0,
-        })
+        matches.append(
+            {
+                "invoice_id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "reason": "Exact invoice number and vendor match",
+                "score": 1.0,
+            }
+        )
 
     # ── Strategy 2: Same vendor + same amount ± 0.01 ─────────────
     amount_matches = matches_query.filter(
@@ -84,12 +85,14 @@ def check_duplicate(
 
         # Only flag if score is significant
         if score >= 0.7:
-            matches.append({
-                "invoice_id": str(inv.id),
-                "invoice_number": inv.invoice_number,
-                "reason": f"Same vendor and amount (${total_amount:,.2f}), date diff: {abs((inv.invoice_date - invoice_date).days) if invoice_date and inv.invoice_date else 'N/A'} days",
-                "score": score,
-            })
+            matches.append(
+                {
+                    "invoice_id": str(inv.id),
+                    "invoice_number": inv.invoice_number,
+                    "reason": f"Same vendor and amount (${total_amount:,.2f}), date diff: {abs((inv.invoice_date - invoice_date).days) if invoice_date and inv.invoice_date else 'N/A'} days",
+                    "score": score,
+                }
+            )
 
     # ── Strategy 3: Same invoice number, different vendor ─────────
     cross_vendor = matches_query.filter(
@@ -100,12 +103,14 @@ def check_duplicate(
     ).all()
 
     for inv in cross_vendor:
-        matches.append({
-            "invoice_id": str(inv.id),
-            "invoice_number": inv.invoice_number,
-            "reason": "Same invoice number but different vendor (possible vendor mismatch)",
-            "score": 0.6,
-        })
+        matches.append(
+            {
+                "invoice_id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "reason": "Same invoice number but different vendor (possible vendor mismatch)",
+                "score": 0.6,
+            }
+        )
 
     # Determine overall result
     if not matches:
@@ -141,14 +146,18 @@ def check_batch_duplicates(
         # Also check within the batch (against items before this one)
         for j in range(i):
             other = invoices[j]
-            if (inv["invoice_number"].lower() == other["invoice_number"].lower()
-                    and inv["vendor_id"] == other["vendor_id"]):
-                result["matches"].append({
-                    "invoice_id": f"batch_item_{j}",
-                    "invoice_number": other["invoice_number"],
-                    "reason": "Duplicate within current import batch",
-                    "score": 1.0,
-                })
+            if (
+                inv["invoice_number"].lower() == other["invoice_number"].lower()
+                and inv["vendor_id"] == other["vendor_id"]
+            ):
+                result["matches"].append(
+                    {
+                        "invoice_id": f"batch_item_{j}",
+                        "invoice_number": other["invoice_number"],
+                        "reason": "Duplicate within current import batch",
+                        "score": 1.0,
+                    }
+                )
                 result["is_duplicate"] = True
                 result["confidence"] = 1.0
 

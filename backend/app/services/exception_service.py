@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -59,9 +58,7 @@ def _build_exception_context(
     match_info = "No match result available."
     if match:
         match_info = (
-            f"Match status: {match.match_status.value}, "
-            f"Score: {match.overall_score:.1f}%, "
-            f"Details: {match.details}"
+            f"Match status: {match.match_status.value}, Score: {match.overall_score:.1f}%, Details: {match.details}"
         )
 
     # Resolve vendor name
@@ -141,6 +138,7 @@ def create_exception(
         # Auto-generate resolution plan in background
         try:
             from app.tasks.invoice_tasks import execute_resolution_plan_auto
+
             execute_resolution_plan_auto.delay(str(exc.id))
         except Exception as e:
             # Don't block exception creation if Celery is down — plan can be
@@ -154,8 +152,8 @@ def update_exception(
     db: Session,
     exception_id: uuid.UUID,
     payload: ExceptionUpdate,
-    resolved_by: Optional[uuid.UUID] = None,
-) -> Optional[Exception_]:
+    resolved_by: uuid.UUID | None = None,
+) -> Exception_ | None:
     """Update an exception (assign, resolve, escalate, etc.)."""
     exc = db.query(Exception_).filter(Exception_.id == exception_id).first()
     if not exc:
@@ -167,7 +165,7 @@ def update_exception(
 
     # If resolving, stamp the timestamp
     if payload.status == ExceptionStatus.resolved:
-        exc.resolved_at = datetime.now(timezone.utc)
+        exc.resolved_at = datetime.now(UTC)
         exc.resolved_by = resolved_by
 
     db.commit()
@@ -175,9 +173,7 @@ def update_exception(
     return exc
 
 
-def detect_duplicate_invoice(
-    db: Session, invoice_number: str, vendor_id: uuid.UUID
-) -> bool:
+def detect_duplicate_invoice(db: Session, invoice_number: str, vendor_id: uuid.UUID) -> bool:
     """Return True if an invoice with the same number + vendor already exists."""
     existing = (
         db.query(Invoice)
@@ -195,7 +191,7 @@ def add_comment(
     exception_id: uuid.UUID,
     user_id: uuid.UUID,
     comment_text: str,
-    mentions: Optional[list[str]] = None,
+    mentions: list[str] | None = None,
 ) -> ExceptionComment:
     """Add a comment to an exception."""
     comment = ExceptionComment(

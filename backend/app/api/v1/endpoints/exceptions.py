@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import math
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -45,10 +44,10 @@ router = APIRouter(prefix="/exceptions", tags=["exceptions"])
 def list_exceptions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    status_filter: Optional[str] = Query(None, alias="status"),
-    severity: Optional[str] = Query(None),
-    exception_type: Optional[str] = Query(None),
-    assigned_to: Optional[str] = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+    severity: str | None = Query(None),
+    exception_type: str | None = Query(None),
+    assigned_to: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -65,12 +64,7 @@ def list_exceptions(
         query = query.filter(Exception_.assigned_to == uuid.UUID(assigned_to))
 
     total = query.count()
-    items = (
-        query.order_by(Exception_.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    items = query.order_by(Exception_.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
     # Deduplicate from joinedload
     seen: set[uuid.UUID] = set()
@@ -96,12 +90,7 @@ def get_exception(
     current_user: User = Depends(get_current_user),
 ):
     """Get a single exception by ID."""
-    exc = (
-        db.query(Exception_)
-        .options(joinedload(Exception_.comments))
-        .filter(Exception_.id == exception_id)
-        .first()
-    )
+    exc = db.query(Exception_).options(joinedload(Exception_.comments)).filter(Exception_.id == exception_id).first()
     if not exc:
         raise HTTPException(status_code=404, detail="Exception not found")
     return exc
@@ -115,9 +104,7 @@ def update_exception(
     current_user: User = Depends(get_current_user),
 ):
     """Update an exception (assign, resolve, escalate, etc.)."""
-    exc = exception_service.update_exception(
-        db, exception_id, payload, resolved_by=current_user.id
-    )
+    exc = exception_service.update_exception(db, exception_id, payload, resolved_by=current_user.id)
     if not exc:
         raise HTTPException(status_code=404, detail="Exception not found")
 
@@ -249,7 +236,7 @@ def approve_plan(
 
     plan.status = PlanStatus.approved
     plan.approved_by = current_user.id
-    plan.approved_at = datetime.now(timezone.utc)
+    plan.approved_at = datetime.now(UTC)
     db.commit()
 
     audit_service.log_action(
@@ -325,7 +312,7 @@ def approve_action(
         )
 
     action.approved_by = current_user.id
-    action.approved_at = datetime.now(timezone.utc)
+    action.approved_at = datetime.now(UTC)
     action.status = ActionStatus.pending  # Reset to pending so execute picks it up
     db.commit()
 
@@ -377,7 +364,7 @@ def approve_action_and_continue(
 
     # Approve the action
     action.approved_by = current_user.id
-    action.approved_at = datetime.now(timezone.utc)
+    action.approved_at = datetime.now(UTC)
     action.status = ActionStatus.pending
     db.commit()
 
@@ -453,7 +440,7 @@ def redirect_action(
 
     # Mark as approved (user has reviewed and redirected)
     action.approved_by = current_user.id
-    action.approved_at = datetime.now(timezone.utc)
+    action.approved_at = datetime.now(UTC)
     action.status = ActionStatus.pending
     db.commit()
 

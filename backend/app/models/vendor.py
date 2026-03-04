@@ -12,13 +12,13 @@ from app.core.database import Base
 from app.models.base import TimestampMixin
 
 
-class VendorStatus(str, enum.Enum):
+class VendorStatus(enum.StrEnum):
     active = "active"
     on_hold = "on_hold"
     blocked = "blocked"
 
 
-class VendorRiskLevel(str, enum.Enum):
+class VendorRiskLevel(enum.StrEnum):
     low = "low"
     medium = "medium"
     high = "high"

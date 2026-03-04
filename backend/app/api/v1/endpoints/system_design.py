@@ -336,12 +336,13 @@ def get_system_stats(
 ):
     """Return system-level statistics for the design showcase."""
     from sqlalchemy import func
-    from app.models.invoice import Invoice
-    from app.models.exception import Exception_
-    from app.models.matching import MatchResult
+
     from app.models.audit import AuditLog
+    from app.models.config import PolicyDocument, PolicyRule
+    from app.models.exception import Exception_
+    from app.models.invoice import Invoice
+    from app.models.matching import MatchResult
     from app.models.vendor import Vendor
-    from app.models.config import PolicyRule, PolicyDocument
 
     return {
         "database": {

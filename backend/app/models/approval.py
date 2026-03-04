@@ -14,7 +14,7 @@ from app.core.database import Base
 from app.models.base import TimestampMixin
 
 
-class ApprovalStatus(str, enum.Enum):
+class ApprovalStatus(enum.StrEnum):
     pending = "pending"
     approved = "approved"
     rejected = "rejected"
@@ -22,7 +22,7 @@ class ApprovalStatus(str, enum.Enum):
     timed_out = "timed_out"
 
 
-class AIRecommendation(str, enum.Enum):
+class AIRecommendation(enum.StrEnum):
     approve = "approve"
     reject = "reject"
     review = "review"
@@ -36,12 +36,8 @@ class ApprovalTask(TimestampMixin, Base):
         Index("ix_approval_tasks_status", "status"),
     )
 
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False
-    )
-    approver_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
-    )
+    invoice_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False)
+    approver_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     approval_level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     approval_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[ApprovalStatus] = mapped_column(

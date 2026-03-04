@@ -6,8 +6,7 @@ thresholds, reducing manual intervention for low-risk variances.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -15,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.models.config import ToleranceConfig
 from app.models.exception import (
     Exception_,
-    ExceptionSeverity,
     ExceptionStatus,
     ExceptionType,
     ResolutionType,
@@ -28,18 +26,26 @@ from app.models.purchase_order import POLineItem
 def get_active_tolerance(db: Session, vendor_id: str | None = None) -> ToleranceConfig | None:
     """Get the applicable tolerance config (vendor-specific or global)."""
     if vendor_id:
-        vendor_tol = db.query(ToleranceConfig).filter(
-            ToleranceConfig.scope == "vendor",
-            ToleranceConfig.scope_value == str(vendor_id),
-            ToleranceConfig.is_active == True,
-        ).first()
+        vendor_tol = (
+            db.query(ToleranceConfig)
+            .filter(
+                ToleranceConfig.scope == "vendor",
+                ToleranceConfig.scope_value == str(vendor_id),
+                ToleranceConfig.is_active,
+            )
+            .first()
+        )
         if vendor_tol:
             return vendor_tol
 
-    return db.query(ToleranceConfig).filter(
-        ToleranceConfig.scope == "global",
-        ToleranceConfig.is_active == True,
-    ).first()
+    return (
+        db.query(ToleranceConfig)
+        .filter(
+            ToleranceConfig.scope == "global",
+            ToleranceConfig.is_active,
+        )
+        .first()
+    )
 
 
 def evaluate_exception(
@@ -106,9 +112,7 @@ def _evaluate_amount_variance(
     tolerance: ToleranceConfig,
 ) -> dict[str, Any]:
     """Check if an amount variance is within tolerance."""
-    match_result = db.query(MatchResult).filter(
-        MatchResult.invoice_id == invoice.id
-    ).first()
+    match_result = db.query(MatchResult).filter(MatchResult.invoice_id == invoice.id).first()
 
     if not match_result or not match_result.matched_po_id:
         return {
@@ -119,9 +123,7 @@ def _evaluate_amount_variance(
         }
 
     # Get PO line items for comparison
-    po_lines = db.query(POLineItem).filter(
-        POLineItem.po_id == match_result.matched_po_id
-    ).all()
+    po_lines = db.query(POLineItem).filter(POLineItem.po_id == match_result.matched_po_id).all()
     po_total = sum(float(pl.line_total) for pl in po_lines)
     inv_total = float(invoice.total_amount)
 
@@ -174,9 +176,7 @@ def _evaluate_quantity_variance(
     tolerance: ToleranceConfig,
 ) -> dict[str, Any]:
     """Check if a quantity variance is within tolerance."""
-    match_result = db.query(MatchResult).filter(
-        MatchResult.invoice_id == invoice.id
-    ).first()
+    match_result = db.query(MatchResult).filter(MatchResult.invoice_id == invoice.id).first()
 
     if not match_result or not match_result.matched_po_id:
         return {
@@ -186,9 +186,7 @@ def _evaluate_quantity_variance(
             "details": {},
         }
 
-    po_lines = db.query(POLineItem).filter(
-        POLineItem.po_id == match_result.matched_po_id
-    ).all()
+    po_lines = db.query(POLineItem).filter(POLineItem.po_id == match_result.matched_po_id).all()
 
     max_variance_pct = 0.0
     line_details = []
@@ -201,12 +199,14 @@ def _evaluate_quantity_variance(
 
         variance_pct = abs(ordered - received) / ordered * 100
         max_variance_pct = max(max_variance_pct, variance_pct)
-        line_details.append({
-            "line": po_line.line_number,
-            "ordered": ordered,
-            "received": received,
-            "variance_pct": variance_pct,
-        })
+        line_details.append(
+            {
+                "line": po_line.line_number,
+                "ordered": ordered,
+                "received": received,
+                "variance_pct": variance_pct,
+            }
+        )
 
     qty_tol = float(tolerance.quantity_tolerance_pct)
     if max_variance_pct <= qty_tol:
@@ -235,7 +235,6 @@ def _evaluate_tax_variance(
     # Tax variances within $10 are auto-resolvable (rounding differences)
     TAX_TOLERANCE_ABS = 10.0
 
-    details = exception.comments  # may contain tax diff info
     return {
         "can_auto_resolve": False,  # Conservative: require manual review for tax
         "reason": "Tax variances require manual review per policy",
@@ -254,14 +253,18 @@ def _apply_auto_resolution(
     exception.status = ExceptionStatus.resolved
     exception.resolution_type = ResolutionType(evaluation["resolution_type"])
     exception.resolution_notes = f"AUTO-RESOLVED: {evaluation['reason']}"
-    exception.resolved_at = datetime.now(timezone.utc)
+    exception.resolved_at = datetime.now(UTC)
 
     # If all exceptions for this invoice are resolved, advance the invoice status
-    open_exceptions = db.query(Exception_).filter(
-        Exception_.invoice_id == invoice.id,
-        Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned, ExceptionStatus.in_progress]),
-        Exception_.id != exception.id,
-    ).count()
+    open_exceptions = (
+        db.query(Exception_)
+        .filter(
+            Exception_.invoice_id == invoice.id,
+            Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned, ExceptionStatus.in_progress]),
+            Exception_.id != exception.id,
+        )
+        .count()
+    )
 
     if open_exceptions == 0:
         invoice.status = InvoiceStatus.pending_approval
@@ -272,14 +275,20 @@ def auto_resolve_all(db: Session, *, dry_run: bool = False) -> dict[str, Any]:
 
     Returns summary of actions taken.
     """
-    open_exceptions = db.query(Exception_).filter(
-        Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned]),
-        Exception_.exception_type.in_([
-            ExceptionType.amount_variance,
-            ExceptionType.quantity_variance,
-            ExceptionType.tax_variance,
-        ]),
-    ).all()
+    open_exceptions = (
+        db.query(Exception_)
+        .filter(
+            Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned]),
+            Exception_.exception_type.in_(
+                [
+                    ExceptionType.amount_variance,
+                    ExceptionType.quantity_variance,
+                    ExceptionType.tax_variance,
+                ]
+            ),
+        )
+        .all()
+    )
 
     resolved = []
     skipped = []

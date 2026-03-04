@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -80,24 +80,22 @@ def link_invoice_to_policies(db: Session, invoice_id: str) -> list[dict[str, Any
 
         elif rule.rule_type == "exception_handling":
             # Check if invoice has any exceptions
-            exc_count = (
-                db.query(func.count(Exception_.id))
-                .filter(Exception_.invoice_id == invoice_id)
-                .scalar() or 0
-            )
+            exc_count = db.query(func.count(Exception_.id)).filter(Exception_.invoice_id == invoice_id).scalar() or 0
             if exc_count > 0:
                 applicable = True
                 relevance = f"Exception SLA applies — {exc_count} exception(s)"
 
         if applicable:
-            linkages.append({
-                "rule_id": str(rule.id),
-                "rule_type": rule.rule_type,
-                "source_text": rule.source_text,
-                "relevance": relevance,
-                "confidence": rule.confidence,
-                "document": rule.policy_document.filename if rule.policy_document else None,
-            })
+            linkages.append(
+                {
+                    "rule_id": str(rule.id),
+                    "rule_type": rule.rule_type,
+                    "source_text": rule.source_text,
+                    "relevance": relevance,
+                    "confidence": rule.confidence,
+                    "document": rule.policy_document.filename if rule.policy_document else None,
+                }
+            )
 
     return linkages
 
@@ -120,23 +118,39 @@ def score_invoice_compliance(db: Session, invoice_id: str) -> dict[str, Any]:
     max_score += 20
     if match_result:
         total_score += 20
-        checks.append({"check": "3-Way Match Performed", "status": "pass", "points": 20, "max": 20, "policy": "Section 4.1"})
+        checks.append(
+            {"check": "3-Way Match Performed", "status": "pass", "points": 20, "max": 20, "policy": "Section 4.1"}
+        )
     else:
-        checks.append({"check": "3-Way Match Performed", "status": "fail", "points": 0, "max": 20, "policy": "Section 4.1"})
+        checks.append(
+            {"check": "3-Way Match Performed", "status": "fail", "points": 0, "max": 20, "policy": "Section 4.1"}
+        )
 
     # Check 2: No unresolved exceptions
     open_exceptions = (
         db.query(func.count(Exception_.id))
         .filter(Exception_.invoice_id == invoice_id)
         .filter(Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned]))
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     max_score += 15
     if open_exceptions == 0:
         total_score += 15
-        checks.append({"check": "Exceptions Resolved", "status": "pass", "points": 15, "max": 15, "policy": "Section 6.1"})
+        checks.append(
+            {"check": "Exceptions Resolved", "status": "pass", "points": 15, "max": 15, "policy": "Section 6.1"}
+        )
     else:
-        checks.append({"check": "Exceptions Resolved", "status": "fail", "points": 0, "max": 15, "policy": "Section 6.1", "detail": f"{open_exceptions} unresolved"})
+        checks.append(
+            {
+                "check": "Exceptions Resolved",
+                "status": "fail",
+                "points": 0,
+                "max": 15,
+                "policy": "Section 6.1",
+                "detail": f"{open_exceptions} unresolved",
+            }
+        )
 
     # Check 3: Proper approval
     total_amount = float(invoice.total_amount or 0)
@@ -146,16 +160,40 @@ def score_invoice_compliance(db: Session, invoice_id: str) -> dict[str, Any]:
         total_score += 20
         checks.append({"check": "Approval Authority", "status": "pass", "points": 20, "max": 20, "policy": "Section 5"})
     elif invoice.status in (InvoiceStatus.approved, InvoiceStatus.posted):
-        approval = db.query(ApprovalTask).filter(ApprovalTask.invoice_id == invoice_id, ApprovalTask.status == ApprovalStatus.approved).first()
+        approval = (
+            db.query(ApprovalTask)
+            .filter(ApprovalTask.invoice_id == invoice_id, ApprovalTask.status == ApprovalStatus.approved)
+            .first()
+        )
         if approval:
             total_score += 20
-            checks.append({"check": "Approval Authority", "status": "pass", "points": 20, "max": 20, "policy": "Section 5"})
+            checks.append(
+                {"check": "Approval Authority", "status": "pass", "points": 20, "max": 20, "policy": "Section 5"}
+            )
         else:
             total_score += 10
-            checks.append({"check": "Approval Authority", "status": "partial", "points": 10, "max": 20, "policy": "Section 5", "detail": "No approval record found"})
+            checks.append(
+                {
+                    "check": "Approval Authority",
+                    "status": "partial",
+                    "points": 10,
+                    "max": 20,
+                    "policy": "Section 5",
+                    "detail": "No approval record found",
+                }
+            )
     elif invoice.status == InvoiceStatus.pending_approval:
         total_score += 15
-        checks.append({"check": "Approval Authority", "status": "partial", "points": 15, "max": 20, "policy": "Section 5", "detail": "Awaiting approval"})
+        checks.append(
+            {
+                "check": "Approval Authority",
+                "status": "partial",
+                "points": 15,
+                "max": 20,
+                "policy": "Section 5",
+                "detail": "Awaiting approval",
+            }
+        )
     else:
         checks.append({"check": "Approval Authority", "status": "fail", "points": 0, "max": 20, "policy": "Section 5"})
 
@@ -163,30 +201,50 @@ def score_invoice_compliance(db: Session, invoice_id: str) -> dict[str, Any]:
     audit_count = (
         db.query(func.count(AuditLog.id))
         .filter(AuditLog.entity_type == "invoice", AuditLog.entity_id == invoice_id)
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     max_score += 15
     if audit_count >= 2:
         total_score += 15
-        checks.append({"check": "Audit Trail Complete", "status": "pass", "points": 15, "max": 15, "policy": "Section 9"})
+        checks.append(
+            {"check": "Audit Trail Complete", "status": "pass", "points": 15, "max": 15, "policy": "Section 9"}
+        )
     elif audit_count >= 1:
         total_score += 8
-        checks.append({"check": "Audit Trail Complete", "status": "partial", "points": 8, "max": 15, "policy": "Section 9", "detail": f"Only {audit_count} log entries"})
+        checks.append(
+            {
+                "check": "Audit Trail Complete",
+                "status": "partial",
+                "points": 8,
+                "max": 15,
+                "policy": "Section 9",
+                "detail": f"Only {audit_count} log entries",
+            }
+        )
     else:
-        checks.append({"check": "Audit Trail Complete", "status": "fail", "points": 0, "max": 15, "policy": "Section 9"})
+        checks.append(
+            {"check": "Audit Trail Complete", "status": "fail", "points": 0, "max": 15, "policy": "Section 9"}
+        )
 
     # Check 5: Vendor is active
     max_score += 15
     if invoice.vendor and invoice.vendor.status == VendorStatus.active:
         total_score += 15
-        checks.append({"check": "Vendor Active Status", "status": "pass", "points": 15, "max": 15, "policy": "Section 8"})
+        checks.append(
+            {"check": "Vendor Active Status", "status": "pass", "points": 15, "max": 15, "policy": "Section 8"}
+        )
     else:
-        checks.append({"check": "Vendor Active Status", "status": "fail", "points": 0, "max": 15, "policy": "Section 8"})
+        checks.append(
+            {"check": "Vendor Active Status", "status": "fail", "points": 0, "max": 15, "policy": "Section 8"}
+        )
 
     # Check 6: Duplicate check
     max_score += 15
     total_score += 15  # Assume system always checks (it does now with our duplicate detection)
-    checks.append({"check": "Duplicate Check Performed", "status": "pass", "points": 15, "max": 15, "policy": "Section 3.3"})
+    checks.append(
+        {"check": "Duplicate Check Performed", "status": "pass", "points": 15, "max": 15, "policy": "Section 3.3"}
+    )
 
     score_pct = round((total_score / max_score) * 100, 1) if max_score > 0 else 0
 
@@ -203,11 +261,7 @@ def score_invoice_compliance(db: Session, invoice_id: str) -> dict[str, Any]:
 
 def score_all_invoices(db: Session) -> dict[str, Any]:
     """Score compliance for all non-draft invoices and return aggregate stats."""
-    invoices = (
-        db.query(Invoice)
-        .filter(Invoice.status != InvoiceStatus.draft)
-        .all()
-    )
+    invoices = db.query(Invoice).filter(Invoice.status != InvoiceStatus.draft).all()
 
     scores = []
     for inv in invoices:
@@ -243,68 +297,73 @@ def run_control_tests(db: Session) -> list[dict[str, Any]]:
 
     # CTL-001: Three-Way Matching
     total_non_draft = (
-        db.query(func.count(Invoice.id))
-        .filter(Invoice.status.notin_([InvoiceStatus.draft]))
-        .scalar() or 0
+        db.query(func.count(Invoice.id)).filter(Invoice.status.notin_([InvoiceStatus.draft])).scalar() or 0
     )
     matched = db.query(func.count(func.distinct(MatchResult.invoice_id))).scalar() or 0
     match_rate = (matched / total_non_draft * 100) if total_non_draft > 0 else 0
-    results.append({
-        "control_id": "CTL-001",
-        "control_name": "Three-Way Matching",
-        "test_description": "Verify all non-draft invoices have matching records",
-        "expected": "100% matching coverage",
-        "actual": f"{match_rate:.1f}% ({matched}/{total_non_draft})",
-        "result": "pass" if match_rate >= 80 else "fail",
-        "severity": "high" if match_rate < 50 else "medium" if match_rate < 80 else "low",
-        "tested_at": datetime.utcnow().isoformat(),
-    })
+    results.append(
+        {
+            "control_id": "CTL-001",
+            "control_name": "Three-Way Matching",
+            "test_description": "Verify all non-draft invoices have matching records",
+            "expected": "100% matching coverage",
+            "actual": f"{match_rate:.1f}% ({matched}/{total_non_draft})",
+            "result": "pass" if match_rate >= 80 else "fail",
+            "severity": "high" if match_rate < 50 else "medium" if match_rate < 80 else "low",
+            "tested_at": datetime.utcnow().isoformat(),
+        }
+    )
 
     # CTL-002: Duplicate Detection
     # Check that no two invoices share the same invoice_number + vendor
-    from sqlalchemy import and_
     dupes = (
         db.query(Invoice.invoice_number, Invoice.vendor_id, func.count(Invoice.id))
         .group_by(Invoice.invoice_number, Invoice.vendor_id)
         .having(func.count(Invoice.id) > 1)
         .all()
     )
-    results.append({
-        "control_id": "CTL-002",
-        "control_name": "Duplicate Invoice Detection",
-        "test_description": "Verify no duplicate invoice numbers exist per vendor",
-        "expected": "0 duplicates",
-        "actual": f"{len(dupes)} duplicate groups found",
-        "result": "pass" if len(dupes) == 0 else "fail",
-        "severity": "high" if len(dupes) > 0 else "low",
-        "tested_at": datetime.utcnow().isoformat(),
-    })
+    results.append(
+        {
+            "control_id": "CTL-002",
+            "control_name": "Duplicate Invoice Detection",
+            "test_description": "Verify no duplicate invoice numbers exist per vendor",
+            "expected": "0 duplicates",
+            "actual": f"{len(dupes)} duplicate groups found",
+            "result": "pass" if len(dupes) == 0 else "fail",
+            "severity": "high" if len(dupes) > 0 else "low",
+            "tested_at": datetime.utcnow().isoformat(),
+        }
+    )
 
     # CTL-003: Approval Matrix
     high_value_unapproved = (
         db.query(func.count(Invoice.id))
         .filter(Invoice.total_amount > 10000)
         .filter(Invoice.status.in_([InvoiceStatus.approved, InvoiceStatus.posted]))
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     high_value_approved = (
         db.query(func.count(func.distinct(ApprovalTask.invoice_id)))
         .join(Invoice, Invoice.id == ApprovalTask.invoice_id)
         .filter(Invoice.total_amount > 10000)
         .filter(ApprovalTask.status == ApprovalStatus.approved)
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     gap = high_value_unapproved - high_value_approved
-    results.append({
-        "control_id": "CTL-003",
-        "control_name": "Approval Matrix Enforcement",
-        "test_description": "Verify invoices >$10K have approval records",
-        "expected": "All high-value invoices approved by authorized personnel",
-        "actual": f"{high_value_approved}/{high_value_unapproved} have approval records",
-        "result": "pass" if gap <= 0 else "fail",
-        "severity": "high" if gap > 0 else "low",
-        "tested_at": datetime.utcnow().isoformat(),
-    })
+    results.append(
+        {
+            "control_id": "CTL-003",
+            "control_name": "Approval Matrix Enforcement",
+            "test_description": "Verify invoices >$10K have approval records",
+            "expected": "All high-value invoices approved by authorized personnel",
+            "actual": f"{high_value_approved}/{high_value_unapproved} have approval records",
+            "result": "pass" if gap <= 0 else "fail",
+            "severity": "high" if gap > 0 else "low",
+            "tested_at": datetime.utcnow().isoformat(),
+        }
+    )
 
     # CTL-004: Vendor Master Validation
     on_hold_processed = (
@@ -312,73 +371,82 @@ def run_control_tests(db: Session) -> list[dict[str, Any]]:
         .join(Vendor, Vendor.id == Invoice.vendor_id)
         .filter(Vendor.status == VendorStatus.on_hold)
         .filter(Invoice.status.notin_([InvoiceStatus.draft, InvoiceStatus.rejected]))
-        .scalar() or 0
+        .scalar()
+        or 0
     )
-    results.append({
-        "control_id": "CTL-004",
-        "control_name": "Vendor Master Validation",
-        "test_description": "Verify no invoices from on-hold vendors are processed",
-        "expected": "0 on-hold vendor invoices processed",
-        "actual": f"{on_hold_processed} on-hold vendor invoices processed",
-        "result": "pass" if on_hold_processed == 0 else "fail",
-        "severity": "high" if on_hold_processed > 0 else "low",
-        "tested_at": datetime.utcnow().isoformat(),
-    })
+    results.append(
+        {
+            "control_id": "CTL-004",
+            "control_name": "Vendor Master Validation",
+            "test_description": "Verify no invoices from on-hold vendors are processed",
+            "expected": "0 on-hold vendor invoices processed",
+            "actual": f"{on_hold_processed} on-hold vendor invoices processed",
+            "result": "pass" if on_hold_processed == 0 else "fail",
+            "severity": "high" if on_hold_processed > 0 else "low",
+            "tested_at": datetime.utcnow().isoformat(),
+        }
+    )
 
     # CTL-007: Audit Trail Completeness
     total_invoices = db.query(func.count(Invoice.id)).scalar() or 0
     invoices_with_audit = (
-        db.query(func.count(func.distinct(AuditLog.entity_id)))
-        .filter(AuditLog.entity_type == "invoice")
-        .scalar() or 0
+        db.query(func.count(func.distinct(AuditLog.entity_id))).filter(AuditLog.entity_type == "invoice").scalar() or 0
     )
     audit_coverage = (invoices_with_audit / total_invoices * 100) if total_invoices > 0 else 0
-    results.append({
-        "control_id": "CTL-007",
-        "control_name": "Audit Trail Completeness",
-        "test_description": "Verify all invoices have audit trail entries",
-        "expected": "100% audit trail coverage",
-        "actual": f"{audit_coverage:.1f}% ({invoices_with_audit}/{total_invoices})",
-        "result": "pass" if audit_coverage >= 90 else "fail",
-        "severity": "medium" if audit_coverage < 90 else "low",
-        "tested_at": datetime.utcnow().isoformat(),
-    })
+    results.append(
+        {
+            "control_id": "CTL-007",
+            "control_name": "Audit Trail Completeness",
+            "test_description": "Verify all invoices have audit trail entries",
+            "expected": "100% audit trail coverage",
+            "actual": f"{audit_coverage:.1f}% ({invoices_with_audit}/{total_invoices})",
+            "result": "pass" if audit_coverage >= 90 else "fail",
+            "severity": "medium" if audit_coverage < 90 else "low",
+            "tested_at": datetime.utcnow().isoformat(),
+        }
+    )
 
     # CTL-008: Exception SLA Monitoring
     sla_breached = (
         db.query(func.count(Exception_.id))
         .filter(Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned]))
         .filter(Exception_.created_at < datetime.utcnow() - timedelta(hours=48))
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     total_open = (
         db.query(func.count(Exception_.id))
         .filter(Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned]))
-        .scalar() or 0
+        .scalar()
+        or 0
     )
-    results.append({
-        "control_id": "CTL-008",
-        "control_name": "Exception SLA Monitoring",
-        "test_description": "Verify open exceptions within 48-hour SLA",
-        "expected": "0 SLA breaches",
-        "actual": f"{sla_breached} exceptions breaching SLA (of {total_open} open)",
-        "result": "pass" if sla_breached == 0 else "fail",
-        "severity": "high" if sla_breached > 2 else "medium" if sla_breached > 0 else "low",
-        "tested_at": datetime.utcnow().isoformat(),
-    })
+    results.append(
+        {
+            "control_id": "CTL-008",
+            "control_name": "Exception SLA Monitoring",
+            "test_description": "Verify open exceptions within 48-hour SLA",
+            "expected": "0 SLA breaches",
+            "actual": f"{sla_breached} exceptions breaching SLA (of {total_open} open)",
+            "result": "pass" if sla_breached == 0 else "fail",
+            "severity": "high" if sla_breached > 2 else "medium" if sla_breached > 0 else "low",
+            "tested_at": datetime.utcnow().isoformat(),
+        }
+    )
 
     # CTL-006: Segregation of Duties
     # Check that same user doesn't both create and approve invoices
-    results.append({
-        "control_id": "CTL-006",
-        "control_name": "Segregation of Duties",
-        "test_description": "Verify invoice creator and approver are different users",
-        "expected": "No user both creates and approves same invoice",
-        "actual": "Automated — system enforces separate roles",
-        "result": "pass",
-        "severity": "low",
-        "tested_at": datetime.utcnow().isoformat(),
-    })
+    results.append(
+        {
+            "control_id": "CTL-006",
+            "control_name": "Segregation of Duties",
+            "test_description": "Verify invoice creator and approver are different users",
+            "expected": "No user both creates and approves same invoice",
+            "actual": "Automated — system enforces separate roles",
+            "result": "pass",
+            "severity": "low",
+            "tested_at": datetime.utcnow().isoformat(),
+        }
+    )
 
     return results
 
@@ -399,42 +467,35 @@ def generate_audit_pack(db: Session) -> dict[str, Any]:
 
     # Get open exceptions summary
     open_exceptions = (
-        db.query(Exception_)
-        .filter(Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned]))
-        .all()
+        db.query(Exception_).filter(Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned])).all()
     )
 
     exception_summary = []
     for exc in open_exceptions:
         inv = db.query(Invoice).filter(Invoice.id == exc.invoice_id).first()
-        exception_summary.append({
-            "exception_type": exc.exception_type,
-            "status": exc.status.value,
-            "invoice_number": inv.invoice_number if inv else "Unknown",
-            "amount": str(inv.total_amount) if inv else "0",
-            "created_at": exc.created_at.isoformat() if exc.created_at else None,
-            "resolution_notes": exc.resolution_notes,
-        })
+        exception_summary.append(
+            {
+                "exception_type": exc.exception_type,
+                "status": exc.status.value,
+                "invoice_number": inv.invoice_number if inv else "Unknown",
+                "amount": str(inv.total_amount) if inv else "0",
+                "created_at": exc.created_at.isoformat() if exc.created_at else None,
+                "resolution_notes": exc.resolution_notes,
+            }
+        )
 
     # Get audit trail stats
     total_audit_entries = db.query(func.count(AuditLog.id)).scalar() or 0
-    audit_by_action = (
-        db.query(AuditLog.action, func.count(AuditLog.id))
-        .group_by(AuditLog.action)
-        .all()
-    )
+    audit_by_action = db.query(AuditLog.action, func.count(AuditLog.id)).group_by(AuditLog.action).all()
 
     # Knowledge base stats
     from app.services.knowledge_base import get_knowledge_summary
+
     kb_summary = get_knowledge_summary(db)
 
     # Invoice processing metrics
     total_invoices = db.query(func.count(Invoice.id)).scalar() or 0
-    posted_invoices = (
-        db.query(func.count(Invoice.id))
-        .filter(Invoice.status == InvoiceStatus.posted)
-        .scalar() or 0
-    )
+    posted_invoices = db.query(func.count(Invoice.id)).filter(Invoice.status == InvoiceStatus.posted).scalar() or 0
     touchless_rate = (posted_invoices / total_invoices * 100) if total_invoices > 0 else 0
 
     pass_count = sum(1 for t in control_tests if t["result"] == "pass")

@@ -49,7 +49,9 @@ def _resolve_vendor(db: Session, vendor_code: str) -> Vendor | None:
 
 
 def _resolve_or_create_vendor(
-    db: Session, vendor_code: str, vendor_name: str | None = None,
+    db: Session,
+    vendor_code: str,
+    vendor_name: str | None = None,
 ) -> Vendor | None:
     """Look up a vendor by code, or auto-create if name is provided."""
     vendor = _resolve_vendor(db, vendor_code)
@@ -119,16 +121,18 @@ def import_csv_purchase_orders(db: Session, file_content: bytes) -> dict[str, An
             first = group.iloc[0]
 
             # Skip if PO already exists
-            existing = db.query(PurchaseOrder).filter(
-                PurchaseOrder.po_number == str(po_number)
-            ).first()
+            existing = db.query(PurchaseOrder).filter(PurchaseOrder.po_number == str(po_number)).first()
             if existing:
                 skipped += 1
                 continue
 
             # Resolve vendor
             vendor_code = str(first.get(vendor_col, "")).strip()
-            vendor_name = str(first.get(vendor_name_col, "")).strip() if vendor_name_col and vendor_name_col in first.index else None
+            vendor_name = (
+                str(first.get(vendor_name_col, "")).strip()
+                if vendor_name_col and vendor_name_col in first.index
+                else None
+            )
 
             if is_ap_format:
                 vendor = _resolve_or_create_vendor(db, vendor_code, vendor_name)
@@ -152,15 +156,17 @@ def import_csv_purchase_orders(db: Session, file_content: bytes) -> dict[str, An
                     lt = qty * price
 
                 total_amount += lt
-                line_data.append({
-                    "line_number": int(row.get("line_number", 1)),
-                    "description": str(row.get("description", "")),
-                    "quantity_ordered": qty,
-                    "unit_price": price,
-                    "line_total": lt,
-                    "quantity_received": float(row.get("quantity_received", 0)),
-                    "quantity_invoiced": float(row.get("quantity_invoiced", 0)),
-                })
+                line_data.append(
+                    {
+                        "line_number": int(row.get("line_number", 1)),
+                        "description": str(row.get("description", "")),
+                        "quantity_ordered": qty,
+                        "unit_price": price,
+                        "line_total": lt,
+                        "quantity_received": float(row.get("quantity_received", 0)),
+                        "quantity_invoiced": float(row.get("quantity_invoiced", 0)),
+                    }
+                )
 
             # Use PO_Total if available (AP_Inputs format)
             if is_ap_format and "po_total" in first.index and not pd.isna(first.get("po_total")):
@@ -244,18 +250,14 @@ def import_csv_goods_receipts(db: Session, file_content: bytes) -> dict[str, Any
             first = group.iloc[0]
 
             # Skip if GRN already exists
-            existing = db.query(GoodsReceipt).filter(
-                GoodsReceipt.grn_number == str(grn_number)
-            ).first()
+            existing = db.query(GoodsReceipt).filter(GoodsReceipt.grn_number == str(grn_number)).first()
             if existing:
                 skipped += 1
                 continue
 
             # Resolve po_number → PO UUID
             po_number = str(first.get("po_number", "")).strip()
-            po = db.query(PurchaseOrder).filter(
-                PurchaseOrder.po_number == po_number
-            ).first()
+            po = db.query(PurchaseOrder).filter(PurchaseOrder.po_number == po_number).first()
             if not po:
                 errors.append(f"GRN {grn_number}: PO '{po_number}' not found")
                 continue
@@ -271,7 +273,9 @@ def import_csv_goods_receipts(db: Session, file_content: bytes) -> dict[str, Any
                 continue
 
             warehouse_val = first.get("warehouse")
-            warehouse = str(warehouse_val).strip() if not pd.isna(warehouse_val) and str(warehouse_val).strip() else None
+            warehouse = (
+                str(warehouse_val).strip() if not pd.isna(warehouse_val) and str(warehouse_val).strip() else None
+            )
 
             grn = GoodsReceipt(
                 grn_number=str(grn_number),
@@ -286,14 +290,16 @@ def import_csv_goods_receipts(db: Session, file_content: bytes) -> dict[str, Any
             for _, row in group.iterrows():
                 # Resolve line number → POLineItem UUID
                 line_num = int(row.get(line_number_col, 0))
-                po_line = db.query(POLineItem).filter(
-                    POLineItem.po_id == po.id,
-                    POLineItem.line_number == line_num,
-                ).first()
-                if not po_line:
-                    errors.append(
-                        f"GRN {grn_number}: PO line {line_num} not found in {po_number}"
+                po_line = (
+                    db.query(POLineItem)
+                    .filter(
+                        POLineItem.po_id == po.id,
+                        POLineItem.line_number == line_num,
                     )
+                    .first()
+                )
+                if not po_line:
+                    errors.append(f"GRN {grn_number}: PO line {line_num} not found in {po_number}")
                     continue
 
                 qty = float(row.get(qty_received_col, 0))
@@ -357,8 +363,12 @@ def import_csv_vendors(db: Session, file_content: bytes) -> dict[str, Any]:
                 state=_safe_str(row.get("state")),
                 country=str(row.get("country", "US")),
                 payment_terms_code=_safe_str(row.get("payment_terms_code")),
-                status=VendorStatus(str(row.get("status", "active"))) if _safe_str(row.get("status")) else VendorStatus.active,
-                risk_level=VendorRiskLevel(str(row.get("risk_level", "low"))) if _safe_str(row.get("risk_level")) else VendorRiskLevel.low,
+                status=VendorStatus(str(row.get("status", "active")))
+                if _safe_str(row.get("status"))
+                else VendorStatus.active,
+                risk_level=VendorRiskLevel(str(row.get("risk_level", "low")))
+                if _safe_str(row.get("risk_level"))
+                else VendorRiskLevel.low,
             )
             db.add(vendor)
             created += 1

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import time
 import uuid
-from datetime import date as _date, datetime
-from typing import Generator, Optional
+from collections.abc import Generator
+from datetime import UTC, datetime
+from datetime import date as _date
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -24,8 +27,6 @@ from app.schemas.invoice import (
     InvoiceResponse,
     InvoiceUpdate,
 )
-import time
-
 from app.services import audit_service, invoice_service, match_service, s3_service
 from app.services.approval_service import _get_ai_recommendation, create_approval_tasks
 from app.services.classification_service import classify_and_validate
@@ -58,13 +59,14 @@ def upload_invoice(
 @router.post("/upload-file", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 def upload_invoice_file(
     file: UploadFile = File(...),
-    vendor_id: Optional[uuid.UUID] = Query(None, description="Vendor ID for the invoice (optional — AI will auto-match)"),
+    vendor_id: uuid.UUID | None = Query(None, description="Vendor ID for the invoice (optional — AI will auto-match)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Upload an invoice PDF/image, store in S3, and create a draft invoice record."""
     if vendor_id:
         from app.models.vendor import Vendor
+
         vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
         if not vendor:
             raise HTTPException(status_code=404, detail="Vendor not found")
@@ -125,9 +127,9 @@ def download_invoice_file(
 def list_invoices(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None),
-    vendor_id: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    vendor_id: str | None = Query(None),
+    search: str | None = Query(None),
     sort_by: str = Query("created_at"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
@@ -189,7 +191,7 @@ def update_invoice(
 @router.post("/{invoice_id}/extract")
 def extract_invoice_endpoint(
     invoice_id: uuid.UUID,
-    file: Optional[UploadFile] = File(None),
+    file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -222,15 +224,11 @@ def extract_invoice_endpoint(
     if extracted.get("invoice_number"):
         invoice.invoice_number = extracted["invoice_number"]
     if extracted.get("invoice_date"):
-        try:
+        with contextlib.suppress(ValueError):
             invoice.invoice_date = _date.fromisoformat(extracted["invoice_date"])
-        except ValueError:
-            pass
     if extracted.get("due_date"):
-        try:
+        with contextlib.suppress(ValueError):
             invoice.due_date = _date.fromisoformat(extracted["due_date"])
-        except ValueError:
-            pass
     if extracted.get("total_amount"):
         invoice.total_amount = extracted["total_amount"]
     if extracted.get("tax_amount") is not None:
@@ -245,21 +243,21 @@ def extract_invoice_endpoint(
     # Persist extracted line items (replace existing ones)
     extracted_lines = extracted.get("line_items", [])
     if extracted_lines:
-        db.query(InvoiceLineItem).filter(
-            InvoiceLineItem.invoice_id == invoice.id
-        ).delete()
+        db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id == invoice.id).delete()
         for li in extracted_lines:
-            db.add(InvoiceLineItem(
-                invoice_id=invoice.id,
-                line_number=li.get("line_number", 1),
-                description=li.get("description"),
-                quantity=li.get("quantity", 1),
-                unit_price=li.get("unit_price", 0),
-                line_total=li.get("line_total", 0),
-                tax_amount=li.get("tax_amount", 0),
-                ai_gl_prediction=li.get("ai_gl_prediction"),
-                ai_confidence=li.get("ai_confidence"),
-            ))
+            db.add(
+                InvoiceLineItem(
+                    invoice_id=invoice.id,
+                    line_number=li.get("line_number", 1),
+                    description=li.get("description"),
+                    quantity=li.get("quantity", 1),
+                    unit_price=li.get("unit_price", 0),
+                    line_total=li.get("line_total", 0),
+                    tax_amount=li.get("tax_amount", 0),
+                    ai_gl_prediction=li.get("ai_gl_prediction"),
+                    ai_confidence=li.get("ai_confidence"),
+                )
+            )
 
     invoice.status = InvoiceStatus.extracted
     db.commit()
@@ -314,19 +312,11 @@ def match_invoice(
         db.refresh(li)
 
     # Determine match type based on GRN availability
-    po_line_ids = [
-        li.po_line_id
-        for li in invoice.line_items
-        if li.po_line_id
-    ]
+    po_line_ids = [li.po_line_id for li in invoice.line_items if li.po_line_id]
 
     use_three_way = False
     if po_line_ids:
-        grn_count = (
-            db.query(func.count(GRNLineItem.id))
-            .filter(GRNLineItem.po_line_id.in_(po_line_ids))
-            .scalar()
-        ) or 0
+        grn_count = (db.query(func.count(GRNLineItem.id)).filter(GRNLineItem.po_line_id.in_(po_line_ids)).scalar()) or 0
         use_three_way = grn_count > 0
 
     try:
@@ -402,10 +392,10 @@ def approve_invoice(
     )
 
     # Auto-post: transition approved → posted immediately
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     invoice.status = InvoiceStatus.posted
-    invoice.posted_at = datetime.now(timezone.utc)
+    invoice.posted_at = datetime.now(UTC)
 
     audit_service.log_action(
         db,
@@ -507,11 +497,7 @@ def batch_process_invoices(
     Returns a summary of results: touchless, exceptions, escalated.
     """
     # Find invoices ready for matching (extracted status)
-    invoices = (
-        db.query(Invoice)
-        .filter(Invoice.status.in_([InvoiceStatus.extracted, InvoiceStatus.draft]))
-        .all()
-    )
+    invoices = db.query(Invoice).filter(Invoice.status.in_([InvoiceStatus.extracted, InvoiceStatus.draft])).all()
 
     results = {
         "total_processed": 0,
@@ -529,9 +515,7 @@ def batch_process_invoices(
             use_three_way = False
             if po_line_ids:
                 grn_count = (
-                    db.query(func.count(GRNLineItem.id))
-                    .filter(GRNLineItem.po_line_id.in_(po_line_ids))
-                    .scalar()
+                    db.query(func.count(GRNLineItem.id)).filter(GRNLineItem.po_line_id.in_(po_line_ids)).scalar()
                 ) or 0
                 use_three_way = grn_count > 0
 
@@ -552,12 +536,14 @@ def batch_process_invoices(
                 results["pending_approval"] += 1
                 status_label = "pending_approval"
 
-            results["details"].append({
-                "invoice_id": str(inv.id),
-                "invoice_number": inv.invoice_number,
-                "status": status_label,
-                "match_score": match_result.overall_score,
-            })
+            results["details"].append(
+                {
+                    "invoice_id": str(inv.id),
+                    "invoice_number": inv.invoice_number,
+                    "status": status_label,
+                    "match_score": match_result.overall_score,
+                }
+            )
 
             audit_service.log_action(
                 db,
@@ -574,12 +560,14 @@ def batch_process_invoices(
             db.commit()
         except Exception as e:
             results["errors"] += 1
-            results["details"].append({
-                "invoice_id": str(inv.id),
-                "invoice_number": inv.invoice_number,
-                "status": "error",
-                "error": str(e),
-            })
+            results["details"].append(
+                {
+                    "invoice_id": str(inv.id),
+                    "invoice_number": inv.invoice_number,
+                    "status": "error",
+                    "error": str(e),
+                }
+            )
             db.rollback()
 
     return results
@@ -596,9 +584,9 @@ def _pipeline_generator(
     current_user: User,
 ) -> Generator[str, None, None]:
     """Generator that yields NDJSON lines as each pipeline step completes."""
+    from app.models.config import ToleranceConfig
     from app.models.exception import Exception_
     from app.models.purchase_order import PurchaseOrder
-    from app.models.config import ToleranceConfig
     from app.services.vendor_matcher import auto_match_vendor
 
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
@@ -611,26 +599,29 @@ def _pipeline_generator(
 
     # ── Cleanup: resolve any stale open exceptions from a previous pipeline run ──
     from app.models.exception import ExceptionStatus
+
     stale = (
         db.query(Exception_)
         .filter(
             Exception_.invoice_id == invoice.id,
-            Exception_.status.in_([
-                ExceptionStatus.open,
-                ExceptionStatus.assigned,
-                ExceptionStatus.in_progress,
-            ]),
+            Exception_.status.in_(
+                [
+                    ExceptionStatus.open,
+                    ExceptionStatus.assigned,
+                    ExceptionStatus.in_progress,
+                ]
+            ),
         )
         .all()
     )
     if stale:
-        from datetime import timezone as _tz2
         from app.models.exception import ResolutionType
+
         for s in stale:
             s.status = ExceptionStatus.resolved
             s.resolution_type = ResolutionType.auto_resolved
             s.resolution_notes = "Auto-resolved on pipeline rerun"
-            s.resolved_at = datetime.now(_tz2.utc)
+            s.resolved_at = datetime.now(UTC)
         db.commit()
 
     # ── Step 1: OCR Extraction ────────────────────────────────────────────────
@@ -651,15 +642,11 @@ def _pipeline_generator(
         if extracted.get("invoice_number"):
             invoice.invoice_number = extracted["invoice_number"]
         if extracted.get("invoice_date"):
-            try:
+            with contextlib.suppress(ValueError):
                 invoice.invoice_date = _date.fromisoformat(extracted["invoice_date"])
-            except ValueError:
-                pass
         if extracted.get("due_date"):
-            try:
+            with contextlib.suppress(ValueError):
                 invoice.due_date = _date.fromisoformat(extracted["due_date"])
-            except ValueError:
-                pass
         if extracted.get("total_amount"):
             invoice.total_amount = extracted["total_amount"]
         if extracted.get("tax_amount") is not None:
@@ -671,57 +658,65 @@ def _pipeline_generator(
         if extracted_lines:
             db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id == invoice.id).delete()
             for li in extracted_lines:
-                db.add(InvoiceLineItem(
-                    invoice_id=invoice.id,
-                    line_number=li.get("line_number", 1),
-                    description=li.get("description"),
-                    quantity=li.get("quantity", 1),
-                    unit_price=li.get("unit_price", 0),
-                    line_total=li.get("line_total", 0),
-                    tax_amount=li.get("tax_amount", 0),
-                    ai_gl_prediction=li.get("ai_gl_prediction"),
-                    ai_confidence=li.get("ai_confidence"),
-                ))
+                db.add(
+                    InvoiceLineItem(
+                        invoice_id=invoice.id,
+                        line_number=li.get("line_number", 1),
+                        description=li.get("description"),
+                        quantity=li.get("quantity", 1),
+                        unit_price=li.get("unit_price", 0),
+                        line_total=li.get("line_total", 0),
+                        tax_amount=li.get("tax_amount", 0),
+                        ai_gl_prediction=li.get("ai_gl_prediction"),
+                        ai_confidence=li.get("ai_confidence"),
+                    )
+                )
 
         invoice.status = InvoiceStatus.extracted
         db.commit()
         db.refresh(invoice)
 
         extraction_method = ocr_result.get("extraction_method", "unknown")
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "ocr_extraction",
-            "label": "OCR Extraction",
-            "agent": f"3-Tier OCR Pipeline ({extraction_method})",
-            "status": "complete",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "output": {
-                "confidence": ocr_result["confidence"],
-                "pages_processed": ocr_result.get("pages_processed", 1),
-                "extraction_method": extraction_method,
-                "extracted_data": extracted,
-                "raw_text_preview": (ocr_result.get("raw_text", "") or "")[:500],
-            },
-        })
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "ocr_extraction",
+                "label": "OCR Extraction",
+                "agent": f"3-Tier OCR Pipeline ({extraction_method})",
+                "status": "complete",
+                "duration_ms": int((time.time() - step_start) * 1000),
+                "output": {
+                    "confidence": ocr_result["confidence"],
+                    "pages_processed": ocr_result.get("pages_processed", 1),
+                    "extraction_method": extraction_method,
+                    "extracted_data": extracted,
+                    "raw_text_preview": (ocr_result.get("raw_text", "") or "")[:500],
+                },
+            }
+        )
     except Exception as exc:
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "ocr_extraction",
-            "label": "OCR Extraction",
-            "agent": "Claude Vision",
-            "status": "error",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "error": str(exc),
-            "output": {},
-        })
-        yield _ndjson_line({
-            "event": "pipeline_done",
-            "invoice_id": str(invoice_id),
-            "invoice_number": invoice.invoice_number,
-            "total_duration_ms": int((time.time() - pipeline_start) * 1000),
-            "final_status": invoice.status.value,
-            "recommendation": None,
-        })
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "ocr_extraction",
+                "label": "OCR Extraction",
+                "agent": "Claude Vision",
+                "status": "error",
+                "duration_ms": int((time.time() - step_start) * 1000),
+                "error": str(exc),
+                "output": {},
+            }
+        )
+        yield _ndjson_line(
+            {
+                "event": "pipeline_done",
+                "invoice_id": str(invoice_id),
+                "invoice_number": invoice.invoice_number,
+                "total_duration_ms": int((time.time() - pipeline_start) * 1000),
+                "final_status": invoice.status.value,
+                "recommendation": None,
+            }
+        )
         return
 
     # ── Step 2: Vendor Match ──────────────────────────────────────────────────
@@ -734,84 +729,95 @@ def _pipeline_generator(
         if invoice.vendor_id:
             # Already has a vendor (e.g. passed during upload)
             from app.models.vendor import Vendor as VendorModel
+
             existing_vendor = db.query(VendorModel).filter(VendorModel.id == invoice.vendor_id).first()
-            yield _ndjson_line({
-                "event": "step_complete",
-                "step": "vendor_match",
-                "label": "Vendor Match",
-                "agent": "Pre-assigned",
-                "status": "complete",
-                "duration_ms": int((time.time() - step_start) * 1000),
-                "output": {
-                    "method": "pre_assigned",
-                    "vendor_id": str(invoice.vendor_id),
-                    "vendor_name": existing_vendor.name if existing_vendor else "Unknown",
-                    "confidence": 1.0,
-                },
-            })
+            yield _ndjson_line(
+                {
+                    "event": "step_complete",
+                    "step": "vendor_match",
+                    "label": "Vendor Match",
+                    "agent": "Pre-assigned",
+                    "status": "complete",
+                    "duration_ms": int((time.time() - step_start) * 1000),
+                    "output": {
+                        "method": "pre_assigned",
+                        "vendor_id": str(invoice.vendor_id),
+                        "vendor_name": existing_vendor.name if existing_vendor else "Unknown",
+                        "confidence": 1.0,
+                    },
+                }
+            )
         elif vendor_name or vendor_tax_id:
             matched_vendor = auto_match_vendor(db, vendor_name=vendor_name, vendor_tax_id=vendor_tax_id)
             if matched_vendor:
                 invoice.vendor_id = matched_vendor.id
                 db.commit()
-                yield _ndjson_line({
-                    "event": "step_complete",
-                    "step": "vendor_match",
-                    "label": "Vendor Match",
-                    "agent": "AI Vendor Matcher (fuzzy + tax_id)",
-                    "status": "complete",
-                    "duration_ms": int((time.time() - step_start) * 1000),
-                    "output": {
-                        "method": "tax_id_exact" if vendor_tax_id else "fuzzy_name",
-                        "vendor_id": str(matched_vendor.id),
-                        "vendor_name": matched_vendor.name,
-                        "vendor_code": matched_vendor.vendor_code,
-                        "ocr_vendor_name": vendor_name,
-                        "ocr_tax_id": vendor_tax_id,
-                        "confidence": 0.95 if vendor_tax_id else 0.85,
-                    },
-                })
+                yield _ndjson_line(
+                    {
+                        "event": "step_complete",
+                        "step": "vendor_match",
+                        "label": "Vendor Match",
+                        "agent": "AI Vendor Matcher (fuzzy + tax_id)",
+                        "status": "complete",
+                        "duration_ms": int((time.time() - step_start) * 1000),
+                        "output": {
+                            "method": "tax_id_exact" if vendor_tax_id else "fuzzy_name",
+                            "vendor_id": str(matched_vendor.id),
+                            "vendor_name": matched_vendor.name,
+                            "vendor_code": matched_vendor.vendor_code,
+                            "ocr_vendor_name": vendor_name,
+                            "ocr_tax_id": vendor_tax_id,
+                            "confidence": 0.95 if vendor_tax_id else 0.85,
+                        },
+                    }
+                )
             else:
-                yield _ndjson_line({
+                yield _ndjson_line(
+                    {
+                        "event": "step_complete",
+                        "step": "vendor_match",
+                        "label": "Vendor Match",
+                        "agent": "AI Vendor Matcher (fuzzy + tax_id)",
+                        "status": "complete",
+                        "duration_ms": int((time.time() - step_start) * 1000),
+                        "output": {
+                            "method": "no_match",
+                            "ocr_vendor_name": vendor_name,
+                            "ocr_tax_id": vendor_tax_id,
+                            "message": "No vendor match found — manual assignment may be needed",
+                            "confidence": 0.0,
+                        },
+                    }
+                )
+        else:
+            yield _ndjson_line(
+                {
                     "event": "step_complete",
                     "step": "vendor_match",
                     "label": "Vendor Match",
-                    "agent": "AI Vendor Matcher (fuzzy + tax_id)",
+                    "agent": "AI Vendor Matcher",
                     "status": "complete",
                     "duration_ms": int((time.time() - step_start) * 1000),
                     "output": {
-                        "method": "no_match",
-                        "ocr_vendor_name": vendor_name,
-                        "ocr_tax_id": vendor_tax_id,
-                        "message": "No vendor match found — manual assignment may be needed",
+                        "method": "no_ocr_data",
+                        "message": "No vendor information extracted from document",
                         "confidence": 0.0,
                     },
-                })
-        else:
-            yield _ndjson_line({
+                }
+            )
+    except Exception as exc:
+        yield _ndjson_line(
+            {
                 "event": "step_complete",
                 "step": "vendor_match",
                 "label": "Vendor Match",
                 "agent": "AI Vendor Matcher",
-                "status": "complete",
+                "status": "error",
                 "duration_ms": int((time.time() - step_start) * 1000),
-                "output": {
-                    "method": "no_ocr_data",
-                    "message": "No vendor information extracted from document",
-                    "confidence": 0.0,
-                },
-            })
-    except Exception as exc:
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "vendor_match",
-            "label": "Vendor Match",
-            "agent": "AI Vendor Matcher",
-            "status": "error",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "error": str(exc),
-            "output": {},
-        })
+                "error": str(exc),
+                "output": {},
+            }
+        )
 
     # ── Step 3: Document Classification ──────────────────────────────────────
     yield _ndjson_line({"event": "step_start", "step": "classification", "label": "Document Classification"})
@@ -823,26 +829,30 @@ def _pipeline_generator(
             extracted_data=extracted,
             ocr_confidence=ocr_result["confidence"],
         )
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "classification",
-            "label": "Document Classification",
-            "agent": "Claude (claude-haiku-4-5-20251001)",
-            "status": "complete",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "output": classification,
-        })
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "classification",
+                "label": "Document Classification",
+                "agent": "Claude (claude-haiku-4-5-20251001)",
+                "status": "complete",
+                "duration_ms": int((time.time() - step_start) * 1000),
+                "output": classification,
+            }
+        )
     except Exception as exc:
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "classification",
-            "label": "Document Classification",
-            "agent": "Claude (claude-haiku-4-5-20251001)",
-            "status": "error",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "error": str(exc),
-            "output": {},
-        })
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "classification",
+                "label": "Document Classification",
+                "agent": "Claude (claude-haiku-4-5-20251001)",
+                "status": "error",
+                "duration_ms": int((time.time() - step_start) * 1000),
+                "error": str(exc),
+                "output": {},
+            }
+        )
 
     # ── Step 4: 3-Way / 2-Way Matching ───────────────────────────────────────
     yield _ndjson_line({"event": "step_start", "step": "three_way_match", "label": "3-Way Match"})
@@ -850,7 +860,7 @@ def _pipeline_generator(
     match_result = None
     exc_count = 0
     try:
-        link_result = match_service.auto_link_po_lines(db, invoice.id)
+        match_service.auto_link_po_lines(db, invoice.id)
         db.refresh(invoice)
         for li in invoice.line_items:
             db.refresh(li)
@@ -859,9 +869,7 @@ def _pipeline_generator(
         use_three_way = False
         if po_line_ids:
             grn_count = (
-                db.query(func.count(GRNLineItem.id))
-                .filter(GRNLineItem.po_line_id.in_(po_line_ids))
-                .scalar()
+                db.query(func.count(GRNLineItem.id)).filter(GRNLineItem.po_line_id.in_(po_line_ids)).scalar()
             ) or 0
             use_three_way = grn_count > 0
 
@@ -879,7 +887,11 @@ def _pipeline_generator(
         if match_result.matched_po_id:
             matched_po = db.query(PurchaseOrder).filter(PurchaseOrder.id == match_result.matched_po_id).first()
         if matched_po:
-            vendor_match_flag = str(invoice.vendor_id) == str(matched_po.vendor_id) if invoice.vendor_id and matched_po.vendor_id else False
+            vendor_match_flag = (
+                str(invoice.vendor_id) == str(matched_po.vendor_id)
+                if invoice.vendor_id and matched_po.vendor_id
+                else False
+            )
             header_match = {
                 "vendor": {"match": vendor_match_flag},
                 "po_number": {"match": True, "value": matched_po.po_number},
@@ -899,45 +911,48 @@ def _pipeline_generator(
                     "quantity_pct": tol_cfg.quantity_tolerance_pct,
                 }
 
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "three_way_match",
-            "label": "3-Way Match" if use_three_way else "2-Way Match",
-            "agent": "AP Match Engine (rule-based, PO + GRN data)",
-            "status": "complete",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "output": {
-                "match_type": match_result.match_type.value,
-                "match_status": match_result.match_status.value,
-                "overall_score": match_result.overall_score,
-                "matched_po_id": str(match_result.matched_po_id) if match_result.matched_po_id else None,
-                "matched_grn_ids": [str(g) for g in (match_result.matched_grn_ids or [])],
-                "tolerance_applied": match_result.tolerance_applied,
-                "tolerance_config": tol_summary,
-                "exceptions_created": exc_count,
-                "header_match": header_match,
-                "details": match_result.details,
-            },
-        })
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "three_way_match",
+                "label": "3-Way Match" if use_three_way else "2-Way Match",
+                "agent": "AP Match Engine (rule-based, PO + GRN data)",
+                "status": "complete",
+                "duration_ms": int((time.time() - step_start) * 1000),
+                "output": {
+                    "match_type": match_result.match_type.value,
+                    "match_status": match_result.match_status.value,
+                    "overall_score": match_result.overall_score,
+                    "matched_po_id": str(match_result.matched_po_id) if match_result.matched_po_id else None,
+                    "matched_grn_ids": [str(g) for g in (match_result.matched_grn_ids or [])],
+                    "tolerance_applied": match_result.tolerance_applied,
+                    "tolerance_config": tol_summary,
+                    "exceptions_created": exc_count,
+                    "header_match": header_match,
+                    "details": match_result.details,
+                },
+            }
+        )
     except Exception as exc:
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "three_way_match",
-            "label": "3-Way Match",
-            "agent": "AP Match Engine",
-            "status": "error",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "error": str(exc),
-            "output": {},
-        })
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "three_way_match",
+                "label": "3-Way Match",
+                "agent": "AP Match Engine",
+                "status": "error",
+                "duration_ms": int((time.time() - step_start) * 1000),
+                "error": str(exc),
+                "output": {},
+            }
+        )
 
     # ── Clean match → auto-approve + auto-post (skip Steps 5 & 6) ────────────
     match_status_val = match_result.match_status.value if match_result else None
     if exc_count == 0 and match_status_val in ("matched", "tolerance_passed"):
         # Auto-approve & auto-post the invoice
-        from datetime import timezone as _tz
         invoice.status = InvoiceStatus.posted
-        invoice.posted_at = datetime.now(_tz.utc)
+        invoice.posted_at = datetime.now(UTC)
         db.commit()
 
         audit_service.log_action(
@@ -952,23 +967,27 @@ def _pipeline_generator(
         db.commit()
 
         # Emit recommendation step as auto-approved
-        yield _ndjson_line({"event": "step_start", "step": "approval_recommendation", "label": "Approval Recommendation"})
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "approval_recommendation",
-            "label": "Approval Recommendation",
-            "agent": "AP Pipeline Agent (auto)",
-            "status": "complete",
-            "duration_ms": 0,
-            "output": {
-                "recommendation": "approve",
-                "reasoning": f"Clean {match_status_val} with score {match_result.overall_score}%. No exceptions. Auto-approved and posted.",
-                "risk_factors": [],
-                "auto_approved": True,
-                "auto_posted": True,
-                "posted_at": invoice.posted_at.isoformat(),
-            },
-        })
+        yield _ndjson_line(
+            {"event": "step_start", "step": "approval_recommendation", "label": "Approval Recommendation"}
+        )
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "approval_recommendation",
+                "label": "Approval Recommendation",
+                "agent": "AP Pipeline Agent (auto)",
+                "status": "complete",
+                "duration_ms": 0,
+                "output": {
+                    "recommendation": "approve",
+                    "reasoning": f"Clean {match_status_val} with score {match_result.overall_score}%. No exceptions. Auto-approved and posted.",
+                    "risk_factors": [],
+                    "auto_approved": True,
+                    "auto_posted": True,
+                    "posted_at": invoice.posted_at.isoformat(),
+                },
+            }
+        )
 
         # Pipeline done
         audit_service.log_action(
@@ -982,16 +1001,18 @@ def _pipeline_generator(
         )
         db.commit()
 
-        yield _ndjson_line({
-            "event": "pipeline_done",
-            "invoice_id": str(invoice_id),
-            "invoice_number": invoice.invoice_number,
-            "total_duration_ms": int((time.time() - pipeline_start) * 1000),
-            "final_status": "posted",
-            "recommendation": "approve",
-            "auto_approved": True,
-            "auto_posted": True,
-        })
+        yield _ndjson_line(
+            {
+                "event": "pipeline_done",
+                "invoice_id": str(invoice_id),
+                "invoice_number": invoice.invoice_number,
+                "total_duration_ms": int((time.time() - pipeline_start) * 1000),
+                "final_status": "posted",
+                "recommendation": "approve",
+                "auto_approved": True,
+                "auto_posted": True,
+            }
+        )
         return
 
     # ── Step 5: Exception Resolution (if exceptions exist) ───────────────────
@@ -999,18 +1020,28 @@ def _pipeline_generator(
         yield _ndjson_line({"event": "step_start", "step": "exception_resolution", "label": "AI Exception Resolution"})
         step_start = time.time()
         try:
-            from app.services.ai_exception_resolver import generate_resolution_plan
-            from app.services import resolution_orchestrator
             from app.models.resolution import PlanStatus
+            from app.services import resolution_orchestrator
+            from app.services.ai_exception_resolver import generate_resolution_plan
 
-            total_exc_count = db.query(Exception_).filter(
-                Exception_.invoice_id == invoice.id,
-                Exception_.status == "open",
-            ).count()
-            exceptions = db.query(Exception_).filter(
-                Exception_.invoice_id == invoice.id,
-                Exception_.status == "open",
-            ).order_by(Exception_.created_at.asc()).limit(5).all()
+            total_exc_count = (
+                db.query(Exception_)
+                .filter(
+                    Exception_.invoice_id == invoice.id,
+                    Exception_.status == "open",
+                )
+                .count()
+            )
+            exceptions = (
+                db.query(Exception_)
+                .filter(
+                    Exception_.invoice_id == invoice.id,
+                    Exception_.status == "open",
+                )
+                .order_by(Exception_.created_at.asc())
+                .limit(5)
+                .all()
+            )
 
             plans_data = []
             for exc_obj in exceptions:
@@ -1019,66 +1050,84 @@ def _pipeline_generator(
                     # Auto-approve and execute
                     plan.status = PlanStatus.approved
                     db.commit()
-                    exec_result = resolution_orchestrator.execute(db, plan.id)
+                    resolution_orchestrator.execute(db, plan.id)
 
                     # Build serializable plan data
                     db.refresh(plan)
                     actions_data = []
                     for action in sorted(plan.actions, key=lambda a: a.step_id):
-                        actions_data.append({
-                            "id": str(action.id),
-                            "step_id": action.step_id,
-                            "action_type": action.action_type,
-                            "status": action.status.value if hasattr(action.status, "value") else str(action.status),
-                            "requires_human_approval": action.requires_human_approval,
-                            "params_json": action.params_json,
-                            "result_json": action.result_json,
-                            "expected_result": action.expected_result,
-                            "error_message": action.error_message,
-                        })
+                        actions_data.append(
+                            {
+                                "id": str(action.id),
+                                "step_id": action.step_id,
+                                "action_type": action.action_type,
+                                "status": action.status.value
+                                if hasattr(action.status, "value")
+                                else str(action.status),
+                                "requires_human_approval": action.requires_human_approval,
+                                "params_json": action.params_json,
+                                "result_json": action.result_json,
+                                "expected_result": action.expected_result,
+                                "error_message": action.error_message,
+                            }
+                        )
 
-                    plans_data.append({
-                        "exception_id": str(exc_obj.id),
-                        "exception_type": exc_obj.exception_type.value if hasattr(exc_obj.exception_type, "value") else str(exc_obj.exception_type),
-                        "plan_id": str(plan.id),
-                        "plan_status": plan.status.value if hasattr(plan.status, "value") else str(plan.status),
-                        "diagnosis": plan.diagnosis,
-                        "confidence": plan.confidence,
-                        "automation_level": plan.automation_level.value if hasattr(plan.automation_level, "value") else str(plan.automation_level),
-                        "actions": actions_data,
-                    })
+                    plans_data.append(
+                        {
+                            "exception_id": str(exc_obj.id),
+                            "exception_type": exc_obj.exception_type.value
+                            if hasattr(exc_obj.exception_type, "value")
+                            else str(exc_obj.exception_type),
+                            "plan_id": str(plan.id),
+                            "plan_status": plan.status.value if hasattr(plan.status, "value") else str(plan.status),
+                            "diagnosis": plan.diagnosis,
+                            "confidence": plan.confidence,
+                            "automation_level": plan.automation_level.value
+                            if hasattr(plan.automation_level, "value")
+                            else str(plan.automation_level),
+                            "actions": actions_data,
+                        }
+                    )
                 except Exception as plan_exc:
-                    plans_data.append({
-                        "exception_id": str(exc_obj.id),
-                        "exception_type": exc_obj.exception_type.value if hasattr(exc_obj.exception_type, "value") else str(exc_obj.exception_type),
-                        "error": str(plan_exc),
-                    })
+                    plans_data.append(
+                        {
+                            "exception_id": str(exc_obj.id),
+                            "exception_type": exc_obj.exception_type.value
+                            if hasattr(exc_obj.exception_type, "value")
+                            else str(exc_obj.exception_type),
+                            "error": str(plan_exc),
+                        }
+                    )
 
-            yield _ndjson_line({
-                "event": "step_complete",
-                "step": "exception_resolution",
-                "label": "AI Exception Resolution",
-                "agent": "Claude Resolution Engine",
-                "status": "complete",
-                "duration_ms": int((time.time() - step_start) * 1000),
-                "output": {
-                    "exceptions_count": len(exceptions),
-                    "total_exceptions": total_exc_count,
-                    "truncated": total_exc_count > 5,
-                    "plans": plans_data,
-                },
-            })
+            yield _ndjson_line(
+                {
+                    "event": "step_complete",
+                    "step": "exception_resolution",
+                    "label": "AI Exception Resolution",
+                    "agent": "Claude Resolution Engine",
+                    "status": "complete",
+                    "duration_ms": int((time.time() - step_start) * 1000),
+                    "output": {
+                        "exceptions_count": len(exceptions),
+                        "total_exceptions": total_exc_count,
+                        "truncated": total_exc_count > 5,
+                        "plans": plans_data,
+                    },
+                }
+            )
         except Exception as exc:
-            yield _ndjson_line({
-                "event": "step_complete",
-                "step": "exception_resolution",
-                "label": "AI Exception Resolution",
-                "agent": "Claude Resolution Engine",
-                "status": "error",
-                "duration_ms": int((time.time() - step_start) * 1000),
-                "error": str(exc),
-                "output": {},
-            })
+            yield _ndjson_line(
+                {
+                    "event": "step_complete",
+                    "step": "exception_resolution",
+                    "label": "AI Exception Resolution",
+                    "agent": "Claude Resolution Engine",
+                    "status": "error",
+                    "duration_ms": int((time.time() - step_start) * 1000),
+                    "error": str(exc),
+                    "output": {},
+                }
+            )
 
     # ── Step 6: Approval Recommendation ──────────────────────────────────────
     yield _ndjson_line({"event": "step_start", "step": "approval_recommendation", "label": "Approval Recommendation"})
@@ -1102,30 +1151,34 @@ def _pipeline_generator(
             reasoning = parts[0]
             risk_factors = [r.strip() for r in parts[1].rstrip(".").split(",") if r.strip()]
 
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "approval_recommendation",
-            "label": "Approval Recommendation",
-            "agent": "Claude (claude-haiku-4-5-20251001)",
-            "status": "complete",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "output": {
-                "recommendation": ai_rec.value,
-                "reasoning": reasoning,
-                "risk_factors": risk_factors,
-            },
-        })
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "approval_recommendation",
+                "label": "Approval Recommendation",
+                "agent": "Claude (claude-haiku-4-5-20251001)",
+                "status": "complete",
+                "duration_ms": int((time.time() - step_start) * 1000),
+                "output": {
+                    "recommendation": ai_rec.value,
+                    "reasoning": reasoning,
+                    "risk_factors": risk_factors,
+                },
+            }
+        )
     except Exception as exc:
-        yield _ndjson_line({
-            "event": "step_complete",
-            "step": "approval_recommendation",
-            "label": "Approval Recommendation",
-            "agent": "Claude (claude-haiku-4-5-20251001)",
-            "status": "error",
-            "duration_ms": int((time.time() - step_start) * 1000),
-            "error": str(exc),
-            "output": {},
-        })
+        yield _ndjson_line(
+            {
+                "event": "step_complete",
+                "step": "approval_recommendation",
+                "label": "Approval Recommendation",
+                "agent": "Claude (claude-haiku-4-5-20251001)",
+                "status": "error",
+                "duration_ms": int((time.time() - step_start) * 1000),
+                "error": str(exc),
+                "output": {},
+            }
+        )
 
     # ── Pipeline done ────────────────────────────────────────────────────────
     audit_service.log_action(
@@ -1139,14 +1192,16 @@ def _pipeline_generator(
     )
     db.commit()
 
-    yield _ndjson_line({
-        "event": "pipeline_done",
-        "invoice_id": str(invoice_id),
-        "invoice_number": invoice.invoice_number,
-        "total_duration_ms": int((time.time() - pipeline_start) * 1000),
-        "final_status": invoice.status.value,
-        "recommendation": recommendation_value,
-    })
+    yield _ndjson_line(
+        {
+            "event": "pipeline_done",
+            "invoice_id": str(invoice_id),
+            "invoice_number": invoice.invoice_number,
+            "total_duration_ms": int((time.time() - pipeline_start) * 1000),
+            "final_status": invoice.status.value,
+            "recommendation": recommendation_value,
+        }
+    )
 
 
 @router.post("/{invoice_id}/simulate-send-email")
@@ -1204,17 +1259,21 @@ def apply_corrections_endpoint(
         computed = round(float(li.quantity) * float(li.unit_price), 2)
         current = float(li.line_total)
         if abs(computed - current) >= 0.01:
-            corrections.append({
-                "line_number": li.line_number,
-                "description": li.description,
-                "old_total": current,
-                "new_total": computed,
-                "difference": round(computed - current, 2),
-            })
+            corrections.append(
+                {
+                    "line_number": li.line_number,
+                    "description": li.description,
+                    "old_total": current,
+                    "new_total": computed,
+                    "difference": round(computed - current, 2),
+                }
+            )
             li.line_total = computed
 
     new_subtotal = sum(float(li.line_total) for li in invoice.line_items)
-    new_total = round(new_subtotal + float(invoice.tax_amount) + float(invoice.freight_amount) - float(invoice.discount_amount), 2)
+    new_total = round(
+        new_subtotal + float(invoice.tax_amount) + float(invoice.freight_amount) - float(invoice.discount_amount), 2
+    )
     invoice.total_amount = new_total
     db.commit()
 

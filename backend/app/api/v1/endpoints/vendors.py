@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -23,30 +22,23 @@ router = APIRouter(prefix="/vendors", tags=["vendors"])
 def list_vendors(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None),
-    status_filter: Optional[str] = Query(None, alias="status"),
-    risk_level: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+    risk_level: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """List vendors with pagination and optional search."""
     query = db.query(Vendor)
     if search:
-        query = query.filter(
-            Vendor.name.ilike(f"%{search}%") | Vendor.vendor_code.ilike(f"%{search}%")
-        )
+        query = query.filter(Vendor.name.ilike(f"%{search}%") | Vendor.vendor_code.ilike(f"%{search}%"))
     if status_filter:
         query = query.filter(Vendor.status == status_filter)
     if risk_level:
         query = query.filter(Vendor.risk_level == risk_level)
 
     total = query.count()
-    items = (
-        query.order_by(Vendor.name.asc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    items = query.order_by(Vendor.name.asc()).offset((page - 1) * page_size).limit(page_size).all()
     return PaginatedResponse[VendorResponse](
         items=items,
         total=total,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -21,7 +19,7 @@ class ParseRequest(BaseModel):
 
 
 class RuleReviewRequest(BaseModel):
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 @router.get("/summary")
@@ -48,9 +46,9 @@ def list_documents(
 
 @router.get("/rules")
 def list_rules(
-    rule_type: Optional[str] = Query(None, description="Filter by rule type"),
-    status: Optional[str] = Query(None, description="Filter by status (pending/approved/rejected)"),
-    document_id: Optional[str] = Query(None, description="Filter by document ID"),
+    rule_type: str | None = Query(None, description="Filter by rule type"),
+    status: str | None = Query(None, description="Filter by status (pending/approved/rejected)"),
+    document_id: str | None = Query(None, description="Filter by document ID"),
     min_confidence: float = Query(0.0, ge=0.0, le=1.0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

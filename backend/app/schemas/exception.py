@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, List, Optional
 
 from pydantic import BaseModel
 
@@ -18,7 +17,7 @@ from app.models.exception import (
 
 class ExceptionCommentCreate(BaseModel):
     comment_text: str
-    mentions: Optional[List[str]] = None
+    mentions: list[str] | None = None
 
 
 class ExceptionCommentResponse(BaseModel):
@@ -26,18 +25,18 @@ class ExceptionCommentResponse(BaseModel):
     exception_id: uuid.UUID
     user_id: uuid.UUID
     comment_text: str
-    mentions: Optional[List[str]] = None
+    mentions: list[str] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
 class ExceptionUpdate(BaseModel):
-    status: Optional[ExceptionStatus] = None
-    assigned_to: Optional[uuid.UUID] = None
-    severity: Optional[ExceptionSeverity] = None
-    resolution_type: Optional[ResolutionType] = None
-    resolution_notes: Optional[str] = None
+    status: ExceptionStatus | None = None
+    assigned_to: uuid.UUID | None = None
+    severity: ExceptionSeverity | None = None
+    resolution_type: ResolutionType | None = None
+    resolution_notes: str | None = None
 
 
 class ExceptionResponse(BaseModel):
@@ -46,14 +45,14 @@ class ExceptionResponse(BaseModel):
     exception_type: ExceptionType
     severity: ExceptionSeverity
     status: ExceptionStatus
-    assigned_to: Optional[uuid.UUID] = None
-    resolution_type: Optional[ResolutionType] = None
-    resolution_notes: Optional[str] = None
-    resolved_at: Optional[datetime] = None
-    resolved_by: Optional[uuid.UUID] = None
-    ai_suggested_resolution: Optional[str] = None
-    ai_severity_reasoning: Optional[str] = None
-    comments: List[ExceptionCommentResponse] = []
+    assigned_to: uuid.UUID | None = None
+    resolution_type: ResolutionType | None = None
+    resolution_notes: str | None = None
+    resolved_at: datetime | None = None
+    resolved_by: uuid.UUID | None = None
+    ai_suggested_resolution: str | None = None
+    ai_severity_reasoning: str | None = None
+    comments: list[ExceptionCommentResponse] = []
     created_at: datetime
     updated_at: datetime
 
@@ -61,5 +60,5 @@ class ExceptionResponse(BaseModel):
 
 
 class BatchAssignRequest(BaseModel):
-    exception_ids: List[uuid.UUID]
+    exception_ids: list[uuid.UUID]
     assigned_to: uuid.UUID

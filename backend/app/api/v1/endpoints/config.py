@@ -26,11 +26,7 @@ def list_tolerances(
     current_user: User = Depends(get_current_user),
 ):
     """List all tolerance configurations."""
-    return (
-        db.query(ToleranceConfig)
-        .order_by(ToleranceConfig.scope, ToleranceConfig.name)
-        .all()
-    )
+    return db.query(ToleranceConfig).order_by(ToleranceConfig.scope, ToleranceConfig.name).all()
 
 
 @router.get("/tolerances/{tolerance_id}", response_model=ToleranceConfigResponse)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -13,7 +12,7 @@ class ToleranceConfigResponse(BaseModel):
     id: uuid.UUID
     name: str
     scope: str
-    scope_value: Optional[str] = None
+    scope_value: str | None = None
     amount_tolerance_pct: float
     amount_tolerance_abs: float
     quantity_tolerance_pct: float
@@ -28,7 +27,7 @@ class ToleranceConfigResponse(BaseModel):
 class ToleranceConfigCreate(BaseModel):
     name: str
     scope: str = "global"
-    scope_value: Optional[str] = None
+    scope_value: str | None = None
     amount_tolerance_pct: float = 5.0
     amount_tolerance_abs: float = 100.0
     quantity_tolerance_pct: float = 2.0
@@ -36,8 +35,8 @@ class ToleranceConfigCreate(BaseModel):
 
 
 class ToleranceConfigUpdate(BaseModel):
-    name: Optional[str] = None
-    amount_tolerance_pct: Optional[float] = None
-    amount_tolerance_abs: Optional[float] = None
-    quantity_tolerance_pct: Optional[float] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    amount_tolerance_pct: float | None = None
+    amount_tolerance_abs: float | None = None
+    quantity_tolerance_pct: float | None = None
+    is_active: bool | None = None

@@ -8,16 +8,17 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from difflib import SequenceMatcher
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.config import ExchangeRate, PolicyRule, ToleranceConfig
 from app.models.exception import Exception_, ExceptionStatus, ResolutionType
 from app.models.goods_receipt import GoodsReceipt, GRNLineItem
-from app.models.invoice import Invoice, InvoiceLineItem, InvoiceStatus
+from app.models.invoice import Invoice, InvoiceStatus
 from app.models.matching import MatchResult
 from app.models.purchase_order import POLineItem, PurchaseOrder
 from app.models.resolution import AutomationAction
@@ -35,9 +36,11 @@ _HANDLERS: dict[str, HandlerFn] = {}
 
 def register(action_type: str):
     """Decorator to register a handler for an action_type."""
+
     def decorator(fn: HandlerFn) -> HandlerFn:
         _HANDLERS[action_type] = fn
         return fn
+
     return decorator
 
 
@@ -77,8 +80,7 @@ def _fallback_handler(db: Session, action) -> dict[str, Any]:
         "status": "completed_via_fallback",
         "params_received": action.params_json or {},
         "expected_result": action.expected_result or "N/A",
-        "note": f"No dedicated handler for '{action.action_type}'. "
-                "Step recorded; manual follow-up may be needed.",
+        "note": f"No dedicated handler for '{action.action_type}'. Step recorded; manual follow-up may be needed.",
     }
 
 
@@ -86,20 +88,25 @@ def _fallback_handler(db: Session, action) -> dict[str, Any]:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_exception_and_invoice(db: Session, action: AutomationAction):
     """Walk action → plan → exception → invoice."""
     from app.models.resolution import ResolutionPlan
+
     plan = db.query(ResolutionPlan).filter(ResolutionPlan.id == action.plan_id).first()
     exc = db.query(Exception_).filter(Exception_.id == plan.exception_id).first() if plan else None
-    inv = db.query(Invoice).options(joinedload(Invoice.line_items)).filter(
-        Invoice.id == exc.invoice_id
-    ).first() if exc else None
+    inv = (
+        db.query(Invoice).options(joinedload(Invoice.line_items)).filter(Invoice.id == exc.invoice_id).first()
+        if exc
+        else None
+    )
     return exc, inv
 
 
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
+
 
 @register("SEARCH_PO_CANDIDATES")
 def handle_search_po_candidates(db: Session, action: AutomationAction) -> dict:
@@ -108,7 +115,6 @@ def handle_search_po_candidates(db: Session, action: AutomationAction) -> dict:
     if not inv:
         return {"error": "Invoice not found", "candidates": []}
 
-    params = action.params_json or {}
     vendor_id = inv.vendor_id
 
     candidate_pos = (
@@ -130,16 +136,18 @@ def handle_search_po_candidates(db: Session, action: AutomationAction) -> dict:
         line_score = 1.0 if len(po.line_items) == len(inv.line_items) else 0.5
         combined = amount_score * 0.7 + line_score * 0.3
 
-        scored.append({
-            "po_id": str(po.id),
-            "po_number": po.po_number,
-            "total_amount": po_total,
-            "currency": po.currency,
-            "status": po.status.value,
-            "line_count": len(po.line_items),
-            "match_score": round(combined, 3),
-            "amount_similarity": round(amount_score, 3),
-        })
+        scored.append(
+            {
+                "po_id": str(po.id),
+                "po_number": po.po_number,
+                "total_amount": po_total,
+                "currency": po.currency,
+                "status": po.status.value,
+                "line_count": len(po.line_items),
+                "match_score": round(combined, 3),
+                "amount_similarity": round(amount_score, 3),
+            }
+        )
 
     scored.sort(key=lambda x: x["match_score"], reverse=True)
     return {"candidates": scored[:5], "vendor_id": str(vendor_id)}
@@ -153,6 +161,7 @@ def handle_find_duplicates(db: Session, action: AutomationAction) -> dict:
         return {"error": "Invoice not found", "duplicates": []}
 
     from app.services.duplicate_detection import check_duplicate
+
     result = check_duplicate(
         db,
         invoice_number=inv.invoice_number,
@@ -172,8 +181,9 @@ def handle_find_duplicates(db: Session, action: AutomationAction) -> dict:
 @register("RERUN_MATCH")
 def handle_rerun_match(db: Session, action: AutomationAction) -> dict:
     """Trigger 2-way or 3-way matching. Reuses match_service."""
-    from app.models.goods_receipt import GRNLineItem
     from sqlalchemy import func
+
+    from app.models.goods_receipt import GRNLineItem
 
     exc, inv = _get_exception_and_invoice(db, action)
     if not inv:
@@ -190,9 +200,7 @@ def handle_rerun_match(db: Session, action: AutomationAction) -> dict:
     po_line_ids = [li.po_line_id for li in inv.line_items if li.po_line_id]
     use_three_way = False
     if po_line_ids:
-        grn_count = db.query(func.count(GRNLineItem.id)).filter(
-            GRNLineItem.po_line_id.in_(po_line_ids)
-        ).scalar() or 0
+        grn_count = db.query(func.count(GRNLineItem.id)).filter(GRNLineItem.po_line_id.in_(po_line_ids)).scalar() or 0
         use_three_way = grn_count > 0
 
     if use_three_way:
@@ -201,12 +209,11 @@ def handle_rerun_match(db: Session, action: AutomationAction) -> dict:
         result = run_two_way_match(db, inv.id)
 
     # If match passed, close exception
-    if result.match_status.value in ("matched", "tolerance_passed"):
-        if exc:
-            exc.status = ExceptionStatus.resolved
-            exc.resolution_type = ResolutionType.auto_resolved
-            exc.resolution_notes = f"Auto-resolved after rerun match (score: {result.overall_score}%)"
-            exc.resolved_at = datetime.now(timezone.utc)
+    if result.match_status.value in ("matched", "tolerance_passed") and exc:
+        exc.status = ExceptionStatus.resolved
+        exc.resolution_type = ResolutionType.auto_resolved
+        exc.resolution_notes = f"Auto-resolved after rerun match (score: {result.overall_score}%)"
+        exc.resolved_at = datetime.now(UTC)
 
     db.commit()
 
@@ -263,16 +270,19 @@ def handle_draft_internal_message(db: Session, action: AutomationAction) -> dict
     params = action.params_json or {}
 
     team = params.get("team", "operations")
-    message = ai_service.call_claude(
-        system_prompt="You write concise internal messages for AP operations. 2-3 sentences.",
-        user_message=(
-            f"Write a message to the {team} team about:\n"
-            f"Invoice: {inv.invoice_number if inv else 'N/A'}\n"
-            f"Exception: {exc.exception_type.value if exc else 'unknown'}\n"
-            f"Context: {params.get('context', 'Please review and take action')}"
-        ),
-        max_tokens=256,
-    ) or "Please review the referenced invoice exception."
+    message = (
+        ai_service.call_claude(
+            system_prompt="You write concise internal messages for AP operations. 2-3 sentences.",
+            user_message=(
+                f"Write a message to the {team} team about:\n"
+                f"Invoice: {inv.invoice_number if inv else 'N/A'}\n"
+                f"Exception: {exc.exception_type.value if exc else 'unknown'}\n"
+                f"Context: {params.get('context', 'Please review and take action')}"
+            ),
+            max_tokens=256,
+        )
+        or "Please review the referenced invoice exception."
+    )
 
     return {"team": team, "message": message, "status": "draft_ready"}
 
@@ -285,21 +295,24 @@ def handle_generate_explanation(db: Session, action: AutomationAction) -> dict:
     if not inv:
         return {"error": "Invoice not found", "explanation": "Unable to generate explanation."}
 
-    match = db.query(MatchResult).filter(
-        MatchResult.invoice_id == inv.id
-    ).order_by(MatchResult.created_at.desc()).first()
+    match = (
+        db.query(MatchResult).filter(MatchResult.invoice_id == inv.id).order_by(MatchResult.created_at.desc()).first()
+    )
 
-    explanation = ai_service.call_claude(
-        system_prompt="You explain AP variances clearly for finance analysts. 2-4 sentences. Reference specific numbers.",
-        user_message=(
-            f"Explain this exception:\n"
-            f"Type: {exc.exception_type.value if exc else 'unknown'}\n"
-            f"Invoice total: ${float(inv.total_amount):,.2f}\n"
-            f"Match details: {match.details if match else 'No match'}\n"
-            f"Tax: ${float(inv.tax_amount):,.2f}"
-        ),
-        max_tokens=512,
-    ) or "Unable to generate explanation."
+    explanation = (
+        ai_service.call_claude(
+            system_prompt="You explain AP variances clearly for finance analysts. 2-4 sentences. Reference specific numbers.",
+            user_message=(
+                f"Explain this exception:\n"
+                f"Type: {exc.exception_type.value if exc else 'unknown'}\n"
+                f"Invoice total: ${float(inv.total_amount):,.2f}\n"
+                f"Match details: {match.details if match else 'No match'}\n"
+                f"Tax: ${float(inv.tax_amount):,.2f}"
+            ),
+            max_tokens=512,
+        )
+        or "Unable to generate explanation."
+    )
 
     return {"explanation": explanation}
 
@@ -354,6 +367,7 @@ def handle_recalc_tax(db: Session, action: AutomationAction) -> dict:
 def handle_propose_auto_resolve(db: Session, action: AutomationAction) -> dict:
     """Evaluate if exception can be auto-resolved."""
     from app.services.auto_resolution import evaluate_exception
+
     exc, inv = _get_exception_and_invoice(db, action)
     if not exc:
         return {"error": "Exception not found"}
@@ -370,8 +384,12 @@ def handle_close_exception(db: Session, action: AutomationAction) -> dict:
 
     exc.status = ExceptionStatus.resolved
     exc.resolution_type = ResolutionType.auto_resolved
-    exc.resolution_notes = action.params_json.get("reason", "Closed by resolution plan") if action.params_json else "Closed by resolution plan"
-    exc.resolved_at = datetime.now(timezone.utc)
+    exc.resolution_notes = (
+        action.params_json.get("reason", "Closed by resolution plan")
+        if action.params_json
+        else "Closed by resolution plan"
+    )
+    exc.resolved_at = datetime.now(UTC)
     db.commit()
     return {"status": "resolved", "exception_id": str(exc.id)}
 
@@ -384,6 +402,7 @@ def handle_proceed_to_approval(db: Session, action: AutomationAction) -> dict:
         return {"error": "Invoice not found"}
 
     from app.services.approval_service import create_approval_tasks
+
     inv.status = InvoiceStatus.pending_approval
     db.commit()
 
@@ -425,11 +444,13 @@ def handle_check_grn(db: Session, action: AutomationAction) -> dict:
     grn_list = []
     for grn in grns:
         lines = db.query(GRNLineItem).filter(GRNLineItem.grn_id == grn.id).all()
-        grn_list.append({
-            "grn_number": grn.grn_number,
-            "receipt_date": str(grn.receipt_date),
-            "lines": [{"qty_received": float(gl.quantity_received)} for gl in lines],
-        })
+        grn_list.append(
+            {
+                "grn_number": grn.grn_number,
+                "receipt_date": str(grn.receipt_date),
+                "lines": [{"qty_received": float(gl.quantity_received)} for gl in lines],
+            }
+        )
     return {"grn_found": len(grn_list) > 0, "grn_records": grn_list}
 
 
@@ -446,12 +467,14 @@ def handle_suggest_vendor_alias(db: Session, action: AutomationAction) -> dict:
     for v in vendors:
         ratio = SequenceMatcher(None, search_text, v.name.lower()).ratio()
         if ratio > 0.4:
-            scored.append({
-                "vendor_id": str(v.id),
-                "vendor_name": v.name,
-                "vendor_code": v.vendor_code,
-                "similarity": round(ratio, 3),
-            })
+            scored.append(
+                {
+                    "vendor_id": str(v.id),
+                    "vendor_name": v.name,
+                    "vendor_code": v.vendor_code,
+                    "similarity": round(ratio, 3),
+                }
+            )
     scored.sort(key=lambda x: x["similarity"], reverse=True)
     return {"suggestions": scored[:5]}
 
@@ -473,12 +496,14 @@ def handle_link_vendor(db: Session, action: AutomationAction) -> dict:
 def handle_create_human_task(db: Session, action: AutomationAction) -> dict:
     """Create a task note for human review (stored as exception comment)."""
     from app.models.exception import ExceptionComment
+
     exc, inv = _get_exception_and_invoice(db, action)
     params = action.params_json or {}
 
     if exc:
         # Use assigned_to as author if available, otherwise store as system comment
         from app.models.user import User
+
         system_user = db.query(User).filter(User.role == "admin").first()
         user_id = system_user.id if system_user else exc.id  # fallback to exception id as placeholder
 
@@ -577,8 +602,8 @@ def handle_rerun_ocr(db: Session, action: AutomationAction) -> dict:
     if not inv or not inv.file_storage_path:
         return {"error": "No file available"}
 
-    from app.services.s3_service import download_file
     from app.services.ocr_service import extract_invoice
+    from app.services.s3_service import download_file
 
     file_content = download_file(inv.file_storage_path)
     filename = inv.file_storage_path.rsplit("/", 1)[-1] if "/" in inv.file_storage_path else "invoice.pdf"
@@ -594,6 +619,7 @@ def handle_rerun_ocr(db: Session, action: AutomationAction) -> dict:
 def handle_lookup_policy(db: Session, action: AutomationAction) -> dict:
     """Query policy rules."""
     from app.models.config import PolicyRuleStatus
+
     rules = db.query(PolicyRule).filter(PolicyRule.status == PolicyRuleStatus.approved).limit(10).all()
     return {"rules": [{"type": r.rule_type, "conditions": r.conditions, "action": r.action} for r in rules]}
 
@@ -653,18 +679,21 @@ def handle_recalc_lines(db: Session, action: AutomationAction) -> dict:
     for li in inv.line_items:
         computed = round(float(li.quantity) * float(li.unit_price), 2)
         current = float(li.line_total)
-        recalculated.append({
-            "line_number": li.line_number,
-            "computed": computed,
-            "current": current,
-            "match": abs(computed - current) < 0.01,
-        })
+        recalculated.append(
+            {
+                "line_number": li.line_number,
+                "computed": computed,
+                "current": current,
+                "match": abs(computed - current) < 0.01,
+            }
+        )
     return {"lines": recalculated}
 
 
 # ---------------------------------------------------------------------------
 # NEW: Additional robust handlers
 # ---------------------------------------------------------------------------
+
 
 @register("COMPARE_LINE_ITEMS")
 def handle_compare_line_items(db: Session, action: AutomationAction) -> dict:
@@ -704,19 +733,23 @@ def handle_compare_line_items(db: Session, action: AutomationAction) -> dict:
             qty_diff = float(li.quantity) - float(po_line.quantity_ordered)
             price_diff = round(float(li.unit_price) - float(po_line.unit_price), 4)
             total_diff = round(inv_total - po_total, 2)
-            row.update({
-                "po_qty": float(po_line.quantity_ordered),
-                "po_unit_price": float(po_line.unit_price),
-                "po_total": po_total,
-                "qty_diff": qty_diff,
-                "price_diff": price_diff,
-                "total_diff": total_diff,
-                "match": abs(total_diff) < 0.01,
-            })
+            row.update(
+                {
+                    "po_qty": float(po_line.quantity_ordered),
+                    "po_unit_price": float(po_line.unit_price),
+                    "po_total": po_total,
+                    "qty_diff": qty_diff,
+                    "price_diff": price_diff,
+                    "total_diff": total_diff,
+                    "match": abs(total_diff) < 0.01,
+                }
+            )
             if abs(total_diff) >= 0.01:
                 mismatches += 1
         else:
-            row.update({"po_qty": None, "po_unit_price": None, "po_total": None, "match": False, "note": "No PO line linked"})
+            row.update(
+                {"po_qty": None, "po_unit_price": None, "po_total": None, "match": False, "note": "No PO line linked"}
+            )
             mismatches += 1
 
         comparisons.append(row)
@@ -738,18 +771,14 @@ def handle_check_tolerance(db: Session, action: AutomationAction) -> dict:
     if not inv:
         return {"error": "Invoice not found"}
 
-    tol = (
-        db.query(ToleranceConfig)
-        .filter(ToleranceConfig.is_active == True)
-        .first()
-    )
+    tol = db.query(ToleranceConfig).filter(ToleranceConfig.is_active).first()
     if not tol:
         return {"has_tolerance": False, "note": "No active tolerance config"}
 
     # Find match result for variance data
-    match = db.query(MatchResult).filter(
-        MatchResult.invoice_id == inv.id
-    ).order_by(MatchResult.created_at.desc()).first()
+    match = (
+        db.query(MatchResult).filter(MatchResult.invoice_id == inv.id).order_by(MatchResult.created_at.desc()).first()
+    )
 
     inv_total = float(inv.total_amount)
     result: dict[str, Any] = {
@@ -765,17 +794,18 @@ def handle_check_tolerance(db: Session, action: AutomationAction) -> dict:
         po_total = sum(float(pl.line_total) for pl in po_lines)
         variance_abs = abs(inv_total - po_total)
         variance_pct = (variance_abs / po_total * 100) if po_total > 0 else 0
-        result.update({
-            "po_total": po_total,
-            "variance_abs": round(variance_abs, 2),
-            "variance_pct": round(variance_pct, 2),
-            "within_pct_tolerance": variance_pct <= float(tol.amount_tolerance_pct),
-            "within_abs_tolerance": variance_abs <= float(tol.amount_tolerance_abs),
-            "within_any_tolerance": (
-                variance_pct <= float(tol.amount_tolerance_pct)
-                or variance_abs <= float(tol.amount_tolerance_abs)
-            ),
-        })
+        result.update(
+            {
+                "po_total": po_total,
+                "variance_abs": round(variance_abs, 2),
+                "variance_pct": round(variance_pct, 2),
+                "within_pct_tolerance": variance_pct <= float(tol.amount_tolerance_pct),
+                "within_abs_tolerance": variance_abs <= float(tol.amount_tolerance_abs),
+                "within_any_tolerance": (
+                    variance_pct <= float(tol.amount_tolerance_pct) or variance_abs <= float(tol.amount_tolerance_abs)
+                ),
+            }
+        )
 
     return result
 
@@ -785,9 +815,12 @@ def handle_summarize_findings(db: Session, action: AutomationAction) -> dict:
     """AI-generated summary of all prior steps' findings in the plan."""
     from app.models.resolution import ResolutionPlan
 
-    plan = db.query(ResolutionPlan).options(
-        joinedload(ResolutionPlan.actions)
-    ).filter(ResolutionPlan.id == action.plan_id).first()
+    plan = (
+        db.query(ResolutionPlan)
+        .options(joinedload(ResolutionPlan.actions))
+        .filter(ResolutionPlan.id == action.plan_id)
+        .first()
+    )
     if not plan:
         return {"summary": "No plan found."}
 
@@ -807,11 +840,14 @@ def handle_summarize_findings(db: Session, action: AutomationAction) -> dict:
         + "\n".join(completed_results)
         + "\n\nProvide a 2-4 sentence executive summary for an AP analyst."
     )
-    summary = ai_service.call_claude(
-        system_prompt="You summarize AP exception resolution findings concisely for finance analysts.",
-        user_message=prompt,
-        max_tokens=512,
-    ) or "Resolution steps completed. Review individual step results for details."
+    summary = (
+        ai_service.call_claude(
+            system_prompt="You summarize AP exception resolution findings concisely for finance analysts.",
+            user_message=prompt,
+            max_tokens=512,
+        )
+        or "Resolution steps completed. Review individual step results for details."
+    )
 
     return {"summary": summary, "steps_reviewed": len(completed_results)}
 
@@ -829,10 +865,14 @@ def handle_escalate_to_manager(db: Session, action: AutomationAction) -> dict:
     params = action.params_json or {}
 
     # Find an approver/admin user to assign to
-    manager = db.query(User).filter(
-        User.role.in_([UserRole.approver, UserRole.admin]),
-        User.is_active == True,
-    ).first()
+    manager = (
+        db.query(User)
+        .filter(
+            User.role.in_([UserRole.approver, UserRole.admin]),
+            User.is_active,
+        )
+        .first()
+    )
 
     if manager:
         exc.assigned_to = manager.id
@@ -854,6 +894,7 @@ def handle_auto_link_po(db: Session, action: AutomationAction) -> dict:
         return {"error": "Invoice not found"}
 
     from app.services.match_service import auto_link_po_lines
+
     result = auto_link_po_lines(db, inv.id)
     db.refresh(inv)
 
@@ -908,9 +949,9 @@ def handle_variance_breakdown(db: Session, action: AutomationAction) -> dict:
     inv_total = float(inv.total_amount)
 
     # Try to get PO total for comparison
-    match = db.query(MatchResult).filter(
-        MatchResult.invoice_id == inv.id
-    ).order_by(MatchResult.created_at.desc()).first()
+    match = (
+        db.query(MatchResult).filter(MatchResult.invoice_id == inv.id).order_by(MatchResult.created_at.desc()).first()
+    )
 
     po_total = 0.0
     po_subtotal = 0.0
@@ -963,13 +1004,15 @@ def handle_apply_corrections(db: Session, action: AutomationAction) -> dict:
         computed = round(float(li.quantity) * float(li.unit_price), 2)
         current = float(li.line_total)
         if abs(computed - current) >= 0.01:
-            corrections.append({
-                "line_number": li.line_number,
-                "description": li.description,
-                "old_total": current,
-                "new_total": computed,
-                "difference": round(computed - current, 2),
-            })
+            corrections.append(
+                {
+                    "line_number": li.line_number,
+                    "description": li.description,
+                    "old_total": current,
+                    "new_total": computed,
+                    "difference": round(computed - current, 2),
+                }
+            )
             li.line_total = computed
 
     # Recalculate invoice total
@@ -1013,15 +1056,17 @@ def handle_generate_credit_request(db: Session, action: AutomationAction) -> dic
             excess = inv_qty - po_qty
             credit_amount = round(excess * float(li.unit_price), 2)
             total_credit += credit_amount
-            overrun_lines.append({
-                "line_number": li.line_number,
-                "description": li.description,
-                "invoiced_qty": inv_qty,
-                "po_qty": po_qty,
-                "excess_qty": excess,
-                "unit_price": float(li.unit_price),
-                "credit_amount": credit_amount,
-            })
+            overrun_lines.append(
+                {
+                    "line_number": li.line_number,
+                    "description": li.description,
+                    "invoiced_qty": inv_qty,
+                    "po_qty": po_qty,
+                    "excess_qty": excess,
+                    "unit_price": float(li.unit_price),
+                    "credit_amount": credit_amount,
+                }
+            )
 
     # Generate narrative via Claude
     narrative = ""
@@ -1030,15 +1075,18 @@ def handle_generate_credit_request(db: Session, action: AutomationAction) -> dic
             f"Line {ol['line_number']}: {ol['description']} — invoiced {ol['invoiced_qty']} vs PO {ol['po_qty']}, excess {ol['excess_qty']}"
             for ol in overrun_lines
         )
-        narrative = ai_service.call_claude(
-            system_prompt="You write concise credit request justifications for AP departments. 2-3 sentences.",
-            user_message=(
-                f"Write a credit request justification for invoice {inv.invoice_number} from {vendor_name}.\n"
-                f"Overrun details: {lines_desc}\n"
-                f"Total credit requested: ${total_credit:,.2f}"
-            ),
-            max_tokens=256,
-        ) or f"Credit requested for quantity overrun on invoice {inv.invoice_number}."
+        narrative = (
+            ai_service.call_claude(
+                system_prompt="You write concise credit request justifications for AP departments. 2-3 sentences.",
+                user_message=(
+                    f"Write a credit request justification for invoice {inv.invoice_number} from {vendor_name}.\n"
+                    f"Overrun details: {lines_desc}\n"
+                    f"Total credit requested: ${total_credit:,.2f}"
+                ),
+                max_tokens=256,
+            )
+            or f"Credit requested for quantity overrun on invoice {inv.invoice_number}."
+        )
 
     credit_number = f"CR-{inv.invoice_number}"
 
@@ -1077,14 +1125,16 @@ def handle_adjust_invoice_quantities(db: Session, action: AutomationAction) -> d
             old_line_total = float(li.line_total)
             li.quantity = po_qty
             li.line_total = round(po_qty * float(li.unit_price), 2)
-            adjusted_lines.append({
-                "line_number": li.line_number,
-                "description": li.description,
-                "old_qty": inv_qty,
-                "new_qty": po_qty,
-                "old_line_total": old_line_total,
-                "new_line_total": float(li.line_total),
-            })
+            adjusted_lines.append(
+                {
+                    "line_number": li.line_number,
+                    "description": li.description,
+                    "old_qty": inv_qty,
+                    "new_qty": po_qty,
+                    "old_line_total": old_line_total,
+                    "new_line_total": float(li.line_total),
+                }
+            )
 
     # Recalculate invoice total
     new_subtotal = sum(float(li.line_total) for li in inv.line_items)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+import contextlib
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.services.auto_resolution import auto_resolve_all, evaluate_exception
+from app.services.auto_resolution import auto_resolve_all
 from app.services.duplicate_detection import check_duplicate
 
 router = APIRouter(prefix="/operations", tags=["operations"])
@@ -21,7 +21,7 @@ class DuplicateCheckRequest(BaseModel):
     invoice_number: str = Field(..., min_length=1)
     vendor_id: str = Field(...)
     total_amount: float = Field(...)
-    invoice_date: Optional[str] = None
+    invoice_date: str | None = None
 
 
 @router.post("/check-duplicate")
@@ -35,10 +35,8 @@ def check_invoice_duplicate(
 
     invoice_date = None
     if payload.invoice_date:
-        try:
+        with contextlib.suppress(ValueError):
             invoice_date = date.fromisoformat(payload.invoice_date)
-        except ValueError:
-            pass
 
     result = check_duplicate(
         db,

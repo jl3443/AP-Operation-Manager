@@ -14,7 +14,7 @@ from app.core.database import Base
 from app.models.base import TimestampMixin
 
 
-class POStatus(str, enum.Enum):
+class POStatus(enum.StrEnum):
     open = "open"
     partially_received = "partially_received"
     fully_received = "fully_received"
@@ -31,9 +31,7 @@ class PurchaseOrder(TimestampMixin, Base):
     )
 
     po_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    vendor_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=False
-    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=False)
     order_date: Mapped[date] = mapped_column(Date, nullable=False)
     delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
@@ -53,9 +51,7 @@ class PurchaseOrder(TimestampMixin, Base):
 
 class POLineItem(TimestampMixin, Base):
     __tablename__ = "po_line_items"
-    __table_args__ = (
-        Index("ix_po_line_items_po_id", "po_id"),
-    )
+    __table_args__ = (Index("ix_po_line_items_po_id", "po_id"),)
 
     po_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False

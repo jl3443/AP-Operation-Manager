@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -16,9 +15,9 @@ class AuditLogResponse(BaseModel):
     entity_id: uuid.UUID
     action: str
     actor_type: str
-    actor_id: Optional[uuid.UUID] = None
-    actor_name: Optional[str] = None
-    changes: Optional[dict] = None
-    evidence: Optional[dict] = None
+    actor_id: uuid.UUID | None = None
+    actor_name: str | None = None
+    changes: dict | None = None
+    evidence: dict | None = None
 
     model_config = {"from_attributes": True}

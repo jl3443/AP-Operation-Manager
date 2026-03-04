@@ -11,7 +11,7 @@ import json
 import logging
 import re
 import time
-from typing import Any, Optional
+from typing import Any
 
 import anthropic
 
@@ -24,15 +24,13 @@ class AIService:
     """Wrapper around the Anthropic Claude API."""
 
     def __init__(self) -> None:
-        self._client: Optional[anthropic.Anthropic] = None
+        self._client: anthropic.Anthropic | None = None
         self._model = settings.LLM_MODEL
         if settings.LLM_API_KEY:
             self._client = anthropic.Anthropic(api_key=settings.LLM_API_KEY)
             logger.info("AIService initialised with model=%s", self._model)
         else:
-            logger.warning(
-                "LLM_API_KEY not set – AI features will use fallback behaviour"
-            )
+            logger.warning("LLM_API_KEY not set – AI features will use fallback behaviour")
 
     @property
     def available(self) -> bool:
@@ -45,7 +43,7 @@ class AIService:
         system_prompt: str,
         user_message: str,
         max_tokens: int = 2048,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send a text-only message to Claude and return the response text."""
         if not self.available:
             return None
@@ -62,7 +60,7 @@ class AIService:
         system_prompt: str,
         messages: list[dict[str, Any]],
         max_tokens: int = 1024,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send a multi-turn conversation to Claude and return the response text.
 
         Unlike ``call_claude`` (single user message), this accepts a full message
@@ -86,7 +84,7 @@ class AIService:
         media_type: str,
         user_message: str = "Extract the information from this document.",
         max_tokens: int = 4096,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send an image/PDF to Claude Vision and return the response text."""
         if not self.available:
             return None
@@ -123,7 +121,7 @@ class AIService:
         text_content: str,
         user_message: str = "Extract structured data from this text.",
         max_tokens: int = 4096,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send extracted text to Claude for structured extraction."""
         if not self.available:
             return None
@@ -137,7 +135,7 @@ class AIService:
     # ── JSON extraction helper ───────────────────────────────────────────
 
     @staticmethod
-    def extract_json(text: str) -> Optional[dict[str, Any]]:
+    def extract_json(text: str) -> dict[str, Any] | None:
         """Parse JSON from Claude's response, handling markdown code fences."""
         if not text:
             return None
@@ -165,7 +163,7 @@ class AIService:
         messages: list[dict[str, Any]],
         max_tokens: int,
         retries: int = 3,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send a request to Claude with exponential-backoff retry.
 
         Note: Uses synchronous ``time.sleep`` for retry delays. All FastAPI

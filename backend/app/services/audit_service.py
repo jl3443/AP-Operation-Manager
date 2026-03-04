@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -17,13 +17,13 @@ def log_action(
     entity_id: uuid.UUID,
     action: str,
     actor_type: ActorType = ActorType.user,
-    actor_id: Optional[uuid.UUID] = None,
-    actor_name: Optional[str] = None,
-    changes: Optional[dict[str, Any]] = None,
-    evidence: Optional[dict[str, Any]] = None,
-    rule_version_id: Optional[uuid.UUID] = None,
-    ip_address: Optional[str] = None,
-    session_id: Optional[str] = None,
+    actor_id: uuid.UUID | None = None,
+    actor_name: str | None = None,
+    changes: dict[str, Any] | None = None,
+    evidence: dict[str, Any] | None = None,
+    rule_version_id: uuid.UUID | None = None,
+    ip_address: str | None = None,
+    session_id: str | None = None,
 ) -> AuditLog:
     """Insert an audit-log row and return it."""
     entry = AuditLog(

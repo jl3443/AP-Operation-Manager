@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -54,24 +53,14 @@ def _build_approval_context(db: Session, invoice: Invoice) -> str:
     match_info = "No match performed yet."
     if match:
         match_info = (
-            f"Match status: {match.match_status.value}, "
-            f"Score: {match.overall_score:.1f}%, "
-            f"Details: {match.details}"
+            f"Match status: {match.match_status.value}, Score: {match.overall_score:.1f}%, Details: {match.details}"
         )
 
     # Exception count
-    exc_count = (
-        db.query(Exception_)
-        .filter(Exception_.invoice_id == invoice.id)
-        .count()
-    )
+    exc_count = db.query(Exception_).filter(Exception_.invoice_id == invoice.id).count()
 
     # Vendor history
-    vendor_total = (
-        db.query(Invoice)
-        .filter(Invoice.vendor_id == invoice.vendor_id)
-        .count()
-    )
+    vendor_total = db.query(Invoice).filter(Invoice.vendor_id == invoice.vendor_id).count()
     vendor_exceptions = (
         db.query(Exception_)
         .join(Invoice, Exception_.invoice_id == Invoice.id)
@@ -98,9 +87,7 @@ def _build_approval_context(db: Session, invoice: Invoice) -> str:
     )
 
 
-def _get_ai_recommendation(
-    db: Session, invoice: Invoice
-) -> tuple[AIRecommendation, str]:
+def _get_ai_recommendation(db: Session, invoice: Invoice) -> tuple[AIRecommendation, str]:
     """Get AI-powered approval recommendation, with rule-based fallback."""
     if not ai_service.available:
         # Fallback: simple amount-based rule
@@ -137,7 +124,7 @@ def _get_ai_recommendation(
     return AIRecommendation.review, "Auto-recommendation: amount exceeds $5,000 threshold"
 
 
-def create_approval_tasks(db: Session, invoice_id: uuid.UUID) -> List[ApprovalTask]:
+def create_approval_tasks(db: Session, invoice_id: uuid.UUID) -> list[ApprovalTask]:
     """Generate approval tasks for an invoice based on the approval matrix.
 
     Falls back to a simple default rule if no matrix rows are active.
@@ -151,10 +138,7 @@ def create_approval_tasks(db: Session, invoice_id: uuid.UUID) -> List[ApprovalTa
 
     # Fetch active matrix rules ordered by priority
     matrix_rules = (
-        db.query(ApprovalMatrix)
-        .filter(ApprovalMatrix.is_active == True)
-        .order_by(ApprovalMatrix.priority.asc())
-        .all()
+        db.query(ApprovalMatrix).filter(ApprovalMatrix.is_active).order_by(ApprovalMatrix.priority.asc()).all()
     )
 
     tasks_created: list[ApprovalTask] = []
@@ -169,11 +153,7 @@ def create_approval_tasks(db: Session, invoice_id: uuid.UUID) -> List[ApprovalTa
                 continue
 
             # Find an approver matching the role
-            approver = (
-                db.query(User)
-                .filter(User.role == rule.approver_role, User.is_active == True)
-                .first()
-            )
+            approver = db.query(User).filter(User.role == rule.approver_role, User.is_active).first()
             if not approver:
                 continue
 
@@ -190,11 +170,7 @@ def create_approval_tasks(db: Session, invoice_id: uuid.UUID) -> List[ApprovalTa
             tasks_created.append(task)
     else:
         # Default: assign to any active approver
-        approver = (
-            db.query(User)
-            .filter(User.role == UserRole.approver, User.is_active == True)
-            .first()
-        )
+        approver = db.query(User).filter(User.role == UserRole.approver, User.is_active).first()
         if approver:
             task = ApprovalTask(
                 invoice_id=invoice.id,
@@ -219,7 +195,7 @@ def process_approval(
     db: Session,
     task_id: uuid.UUID,
     approved: bool,
-    comments: Optional[str] = None,
+    comments: str | None = None,
 ) -> ApprovalTask:
     """Approve or reject an approval task."""
     task = db.query(ApprovalTask).filter(ApprovalTask.id == task_id).first()
@@ -229,7 +205,7 @@ def process_approval(
         raise ValueError(f"ApprovalTask {task_id} is not pending (status={task.status})")
 
     task.status = ApprovalStatus.approved if approved else ApprovalStatus.rejected
-    task.decision_at = datetime.now(timezone.utc)
+    task.decision_at = datetime.now(UTC)
     task.comments = comments
 
     # Update invoice status based on decision

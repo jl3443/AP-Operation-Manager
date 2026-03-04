@@ -10,9 +10,8 @@ import json
 import logging
 import re
 import uuid
-from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -212,70 +211,82 @@ def _extract_policy_rules_fallback(text: str) -> list[dict[str, Any]]:
     ]
     for pattern, _ in threshold_patterns:
         for m in re.finditer(pattern, text, re.IGNORECASE):
-            rules.append({
-                "rule_type": "approval_threshold",
-                "source_section": "Section 5 — Approval Authority Matrix",
-                "source_text": m.group(0)[:200],
-                "conditions": {"threshold_text": m.group(0)[:100]},
-                "action": {"approval_required": True},
-                "confidence": 0.8,
-            })
+            rules.append(
+                {
+                    "rule_type": "approval_threshold",
+                    "source_section": "Section 5 — Approval Authority Matrix",
+                    "source_text": m.group(0)[:200],
+                    "conditions": {"threshold_text": m.group(0)[:100]},
+                    "action": {"approval_required": True},
+                    "confidence": 0.8,
+                }
+            )
 
     # Matching requirements
     if "3-way match" in text.lower():
-        rules.append({
-            "rule_type": "matching_requirement",
-            "source_section": "Section 4.1 — 3-Way Match",
-            "source_text": "All goods invoices require 3-way match: Invoice vs PO vs GRN",
-            "conditions": {"invoice_type": "goods"},
-            "action": {"match_type": "3-way", "fields": ["invoice", "po", "grn"]},
-            "confidence": 0.95,
-        })
+        rules.append(
+            {
+                "rule_type": "matching_requirement",
+                "source_section": "Section 4.1 — 3-Way Match",
+                "source_text": "All goods invoices require 3-way match: Invoice vs PO vs GRN",
+                "conditions": {"invoice_type": "goods"},
+                "action": {"match_type": "3-way", "fields": ["invoice", "po", "grn"]},
+                "confidence": 0.95,
+            }
+        )
 
     if "2-way match" in text.lower():
-        rules.append({
-            "rule_type": "matching_requirement",
-            "source_section": "Section 4.2 — 2-Way Match",
-            "source_text": "Service invoices with valid contract reference may use 2-way match",
-            "conditions": {"invoice_type": "services", "has_contract": True},
-            "action": {"match_type": "2-way", "fields": ["invoice", "po"]},
-            "confidence": 0.9,
-        })
+        rules.append(
+            {
+                "rule_type": "matching_requirement",
+                "source_section": "Section 4.2 — 2-Way Match",
+                "source_text": "Service invoices with valid contract reference may use 2-way match",
+                "conditions": {"invoice_type": "services", "has_contract": True},
+                "action": {"match_type": "2-way", "fields": ["invoice", "po"]},
+                "confidence": 0.9,
+            }
+        )
 
     # Exception SLA targets
     sla_pattern = r"(Price Variance|Quantity Mismatch|Missing PO|Duplicate Invoice|Unknown Supplier|Description Mismatch|Incorrect Tax|Above Threshold)\s*[│|]\s*(\d+)"
     for m in re.finditer(sla_pattern, text):
-        rules.append({
-            "rule_type": "exception_handling",
-            "source_section": "Section 6.1 — Exception Types",
-            "source_text": f"{m.group(1)}: {m.group(2)} hours target resolution",
-            "conditions": {"exception_type": m.group(1).lower().replace(" ", "_")},
-            "action": {"target_hours": int(m.group(2))},
-            "confidence": 0.9,
-        })
+        rules.append(
+            {
+                "rule_type": "exception_handling",
+                "source_section": "Section 6.1 — Exception Types",
+                "source_text": f"{m.group(1)}: {m.group(2)} hours target resolution",
+                "conditions": {"exception_type": m.group(1).lower().replace(" ", "_")},
+                "action": {"target_hours": int(m.group(2))},
+                "confidence": 0.9,
+            }
+        )
 
     # KPI targets
     kpi_pattern = r"(Touchless Rate|Invoice Cycle Time|Exception Rate|On-Time Payment Rate|Aging >30 days)\s*[│|]\s*([\d<>%.\s]+days?)"
     for m in re.finditer(kpi_pattern, text):
-        rules.append({
-            "rule_type": "kpi_target",
-            "source_section": "Section 10 — KPI Targets",
-            "source_text": f"{m.group(1)}: target {m.group(2).strip()}",
-            "conditions": {"metric": m.group(1)},
-            "action": {"target": m.group(2).strip()},
-            "confidence": 0.85,
-        })
+        rules.append(
+            {
+                "rule_type": "kpi_target",
+                "source_section": "Section 10 — KPI Targets",
+                "source_text": f"{m.group(1)}: target {m.group(2).strip()}",
+                "conditions": {"metric": m.group(1)},
+                "action": {"target": m.group(2).strip()},
+                "confidence": 0.85,
+            }
+        )
 
     # Duplicate prevention
     if "duplicate" in text.lower():
-        rules.append({
-            "rule_type": "duplicate_prevention",
-            "source_section": "Section 3.3 — Duplicate Invoice Prevention",
-            "source_text": "System must check supplier + invoice number combination before processing",
-            "conditions": {"check_fields": ["supplier_id", "invoice_number"]},
-            "action": {"auto_reject": True, "notify_supplier": True},
-            "confidence": 0.95,
-        })
+        rules.append(
+            {
+                "rule_type": "duplicate_prevention",
+                "source_section": "Section 3.3 — Duplicate Invoice Prevention",
+                "source_text": "System must check supplier + invoice number combination before processing",
+                "conditions": {"check_fields": ["supplier_id", "invoice_number"]},
+                "action": {"auto_reject": True, "notify_supplier": True},
+                "confidence": 0.95,
+            }
+        )
 
     return rules
 
@@ -292,62 +303,72 @@ def _extract_contract_rules_fallback(text: str) -> list[dict[str, Any]]:
     payment_match = re.search(r"Payment Terms:\s*(Net\s*\d+)", text, re.IGNORECASE)
     if payment_match:
         days = re.search(r"\d+", payment_match.group(1))
-        rules.append({
-            "rule_type": "payment_terms",
-            "source_section": "Commercial Terms",
-            "source_text": f"{supplier}: {payment_match.group(1)}",
-            "conditions": {"supplier": supplier},
-            "action": {"payment_days": int(days.group()) if days else 30},
-            "confidence": 0.95,
-        })
+        rules.append(
+            {
+                "rule_type": "payment_terms",
+                "source_section": "Commercial Terms",
+                "source_text": f"{supplier}: {payment_match.group(1)}",
+                "conditions": {"supplier": supplier},
+                "action": {"payment_days": int(days.group()) if days else 30},
+                "confidence": 0.95,
+            }
+        )
 
     # Price tolerance
     tolerance_match = re.search(r"Price Tolerance:\s*(.*?)(?:\n|$)", text, re.IGNORECASE)
     if tolerance_match:
-        rules.append({
-            "rule_type": "price_tolerance",
-            "source_section": "Invoicing Rules",
-            "source_text": f"{supplier}: {tolerance_match.group(1).strip()}",
-            "conditions": {"supplier": supplier},
-            "action": {"tolerance": tolerance_match.group(1).strip()},
-            "confidence": 0.9,
-        })
+        rules.append(
+            {
+                "rule_type": "price_tolerance",
+                "source_section": "Invoicing Rules",
+                "source_text": f"{supplier}: {tolerance_match.group(1).strip()}",
+                "conditions": {"supplier": supplier},
+                "action": {"tolerance": tolerance_match.group(1).strip()},
+                "confidence": 0.9,
+            }
+        )
 
     # Surcharges
     surcharge_match = re.search(r"Maximum:\s*([\d.]+%.*?)(?:\n|$)", text, re.IGNORECASE)
     if surcharge_match:
         type_match = re.search(r"Type:\s*(.*?)(?:\n|$)", text)
-        rules.append({
-            "rule_type": "surcharge_allowance",
-            "source_section": "Permitted Surcharges",
-            "source_text": f"{supplier}: {type_match.group(1).strip() if type_match else 'surcharge'} up to {surcharge_match.group(1).strip()}",
-            "conditions": {"supplier": supplier},
-            "action": {"max_surcharge": surcharge_match.group(1).strip()},
-            "confidence": 0.9,
-        })
+        rules.append(
+            {
+                "rule_type": "surcharge_allowance",
+                "source_section": "Permitted Surcharges",
+                "source_text": f"{supplier}: {type_match.group(1).strip() if type_match else 'surcharge'} up to {surcharge_match.group(1).strip()}",
+                "conditions": {"supplier": supplier},
+                "action": {"max_surcharge": surcharge_match.group(1).strip()},
+                "confidence": 0.9,
+            }
+        )
 
     # Volume discounts
     for m in re.finditer(r"Orders?\s*>\s*\$?([\d,]+)\s*:\s*([\d.]+%)\s*discount", text, re.IGNORECASE):
-        rules.append({
-            "rule_type": "volume_discount",
-            "source_section": "Volume Discounts",
-            "source_text": f"{supplier}: {m.group(2)} discount for orders > ${m.group(1)}",
-            "conditions": {"supplier": supplier, "order_min": float(m.group(1).replace(",", ""))},
-            "action": {"discount_pct": float(m.group(2).replace("%", ""))},
-            "confidence": 0.9,
-        })
+        rules.append(
+            {
+                "rule_type": "volume_discount",
+                "source_section": "Volume Discounts",
+                "source_text": f"{supplier}: {m.group(2)} discount for orders > ${m.group(1)}",
+                "conditions": {"supplier": supplier, "order_min": float(m.group(1).replace(",", ""))},
+                "action": {"discount_pct": float(m.group(2).replace("%", ""))},
+                "confidence": 0.9,
+            }
+        )
 
     # Late delivery penalty
     penalty_match = re.search(r"Late Delivery Penalty:\s*(.*?)(?:\n|$)", text, re.IGNORECASE)
     if penalty_match:
-        rules.append({
-            "rule_type": "penalty_clause",
-            "source_section": "Delivery Terms",
-            "source_text": f"{supplier}: {penalty_match.group(1).strip()}",
-            "conditions": {"supplier": supplier, "trigger": "late_delivery"},
-            "action": {"penalty": penalty_match.group(1).strip()},
-            "confidence": 0.85,
-        })
+        rules.append(
+            {
+                "rule_type": "penalty_clause",
+                "source_section": "Delivery Terms",
+                "source_text": f"{supplier}: {penalty_match.group(1).strip()}",
+                "conditions": {"supplier": supplier, "trigger": "late_delivery"},
+                "action": {"penalty": penalty_match.group(1).strip()},
+                "confidence": 0.85,
+            }
+        )
 
     return rules
 
@@ -357,20 +378,24 @@ def _extract_audit_rules_fallback(text: str) -> list[dict[str, Any]]:
     rules = []
 
     # Extract findings
-    finding_pattern = r"FINDING\s*(\d+)\s*[—-]\s*(HIGH|MEDIUM|LOW)\s+SEVERITY\s*\n.*?Category:\s*(.*?)\n.*?Title:\s*(.*?)\n"
+    finding_pattern = (
+        r"FINDING\s*(\d+)\s*[—-]\s*(HIGH|MEDIUM|LOW)\s+SEVERITY\s*\n.*?Category:\s*(.*?)\n.*?Title:\s*(.*?)\n"
+    )
     for m in re.finditer(finding_pattern, text, re.IGNORECASE | re.DOTALL):
-        rules.append({
-            "rule_type": "audit_finding",
-            "source_section": f"Finding {m.group(1)}",
-            "source_text": f"[{m.group(2)}] {m.group(4).strip()}",
-            "conditions": {
-                "severity": m.group(2).lower(),
-                "category": m.group(3).strip(),
-                "finding_ref": f"FINDING-{m.group(1)}",
-            },
-            "action": {"status": "open"},
-            "confidence": 0.9,
-        })
+        rules.append(
+            {
+                "rule_type": "audit_finding",
+                "source_section": f"Finding {m.group(1)}",
+                "source_text": f"[{m.group(2)}] {m.group(4).strip()}",
+                "conditions": {
+                    "severity": m.group(2).lower(),
+                    "category": m.group(3).strip(),
+                    "finding_ref": f"FINDING-{m.group(1)}",
+                },
+                "action": {"status": "open"},
+                "confidence": 0.9,
+            }
+        )
 
     return rules
 
@@ -383,7 +408,7 @@ def parse_and_store_document(
     file_path: str,
     filename: str,
     doc_type: str,
-    uploaded_by: Optional[uuid.UUID] = None,
+    uploaded_by: uuid.UUID | None = None,
     use_ai: bool = True,
 ) -> PolicyDocument:
     """Parse a document, extract rules, and store in the database.
@@ -452,14 +477,14 @@ def parse_all_ap_inputs(db: Session, ap_inputs_dir: str, use_ai: bool = True) ->
     # Parse AP Policy
     policy_path = base / "AP_Policy.docx"
     if policy_path.exists():
-        doc = parse_and_store_document(
-            db, str(policy_path), "AP_Policy.docx", DOC_TYPE_POLICY, use_ai=use_ai
+        doc = parse_and_store_document(db, str(policy_path), "AP_Policy.docx", DOC_TYPE_POLICY, use_ai=use_ai)
+        results["documents"].append(
+            {
+                "filename": doc.filename,
+                "type": DOC_TYPE_POLICY,
+                "rules_extracted": doc.extracted_rules_count,
+            }
         )
-        results["documents"].append({
-            "filename": doc.filename,
-            "type": DOC_TYPE_POLICY,
-            "rules_extracted": doc.extracted_rules_count,
-        })
         results["total_rules"] += doc.extracted_rules_count
 
     # Parse 3-Way Match Report
@@ -468,38 +493,40 @@ def parse_all_ap_inputs(db: Session, ap_inputs_dir: str, use_ai: bool = True) ->
         doc = parse_and_store_document(
             db, str(match_report), "AP_3Way_Match_Report.docx", DOC_TYPE_MATCH_REPORT, use_ai=use_ai
         )
-        results["documents"].append({
-            "filename": doc.filename,
-            "type": DOC_TYPE_MATCH_REPORT,
-            "rules_extracted": doc.extracted_rules_count,
-        })
+        results["documents"].append(
+            {
+                "filename": doc.filename,
+                "type": DOC_TYPE_MATCH_REPORT,
+                "rules_extracted": doc.extracted_rules_count,
+            }
+        )
         results["total_rules"] += doc.extracted_rules_count
 
     # Parse Audit Findings
     audit_path = base / "Audit_Findings_2024.pdf"
     if audit_path.exists():
-        doc = parse_and_store_document(
-            db, str(audit_path), "Audit_Findings_2024.pdf", DOC_TYPE_AUDIT, use_ai=use_ai
+        doc = parse_and_store_document(db, str(audit_path), "Audit_Findings_2024.pdf", DOC_TYPE_AUDIT, use_ai=use_ai)
+        results["documents"].append(
+            {
+                "filename": doc.filename,
+                "type": DOC_TYPE_AUDIT,
+                "rules_extracted": doc.extracted_rules_count,
+            }
         )
-        results["documents"].append({
-            "filename": doc.filename,
-            "type": DOC_TYPE_AUDIT,
-            "rules_extracted": doc.extracted_rules_count,
-        })
         results["total_rules"] += doc.extracted_rules_count
 
     # Parse Supplier Contracts
     contracts_dir = base / "Supplier_Contracts"
     if contracts_dir.exists():
         for contract_path in sorted(contracts_dir.glob("*.docx")):
-            doc = parse_and_store_document(
-                db, str(contract_path), contract_path.name, DOC_TYPE_CONTRACT, use_ai=use_ai
+            doc = parse_and_store_document(db, str(contract_path), contract_path.name, DOC_TYPE_CONTRACT, use_ai=use_ai)
+            results["documents"].append(
+                {
+                    "filename": doc.filename,
+                    "type": DOC_TYPE_CONTRACT,
+                    "rules_extracted": doc.extracted_rules_count,
+                }
             )
-            results["documents"].append({
-                "filename": doc.filename,
-                "type": DOC_TYPE_CONTRACT,
-                "rules_extracted": doc.extracted_rules_count,
-            })
             results["total_rules"] += doc.extracted_rules_count
 
     return results

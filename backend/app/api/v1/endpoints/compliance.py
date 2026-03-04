@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
-
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -16,7 +14,6 @@ from app.models.exception import Exception_, ExceptionStatus
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.user import User
 from app.models.vendor import Vendor
-
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
@@ -42,7 +39,7 @@ class ComplianceGap(BaseModel):
     evidence_count: int
 
 
-@router.get("/control-map", response_model=List[ControlMapping])
+@router.get("/control-map", response_model=list[ControlMapping])
 def get_control_map(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -154,7 +151,7 @@ def get_control_map(
     return controls
 
 
-@router.get("/gaps", response_model=List[ComplianceGap])
+@router.get("/gaps", response_model=list[ComplianceGap])
 def get_compliance_gaps(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -166,18 +163,21 @@ def get_compliance_gaps(
     open_exceptions = (
         db.query(func.count(Exception_.id))
         .filter(Exception_.status.in_([ExceptionStatus.open, ExceptionStatus.assigned]))
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     if open_exceptions > 0:
-        gaps.append(ComplianceGap(
-            gap_id="GAP-001",
-            control_id="CTL-008",
-            finding=f"{open_exceptions} exceptions remain open, potentially breaching 48-hour SLA",
-            severity="high",
-            status="open",
-            recommendation="Implement automated escalation for exceptions approaching SLA deadline",
-            evidence_count=open_exceptions,
-        ))
+        gaps.append(
+            ComplianceGap(
+                gap_id="GAP-001",
+                control_id="CTL-008",
+                finding=f"{open_exceptions} exceptions remain open, potentially breaching 48-hour SLA",
+                severity="high",
+                status="open",
+                recommendation="Implement automated escalation for exceptions approaching SLA deadline",
+                evidence_count=open_exceptions,
+            )
+        )
 
     # Check for invoices without match results (matching control gap)
     unmatched = (
@@ -185,71 +185,81 @@ def get_compliance_gaps(
         .filter(
             Invoice.status.notin_([InvoiceStatus.draft, InvoiceStatus.rejected]),
         )
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     from app.models.matching import MatchResult
+
     matched = db.query(func.count(func.distinct(MatchResult.invoice_id))).scalar() or 0
     no_match = unmatched - matched
     if no_match > 0:
-        gaps.append(ComplianceGap(
-            gap_id="GAP-002",
-            control_id="CTL-001",
-            finding=f"{no_match} processed invoices have no matching record",
-            severity="medium",
-            status="remediation",
-            recommendation="Ensure all non-draft invoices go through the matching engine",
-            evidence_count=no_match,
-        ))
+        gaps.append(
+            ComplianceGap(
+                gap_id="GAP-002",
+                control_id="CTL-001",
+                finding=f"{no_match} processed invoices have no matching record",
+                severity="medium",
+                status="remediation",
+                recommendation="Ensure all non-draft invoices go through the matching engine",
+                evidence_count=no_match,
+            )
+        )
 
     # Check on-hold vendor invoices that were processed
     from app.models.vendor import VendorStatus
+
     on_hold_invoices = (
         db.query(func.count(Invoice.id))
         .join(Vendor, Vendor.id == Invoice.vendor_id)
         .filter(Vendor.status == VendorStatus.on_hold)
         .filter(Invoice.status.notin_([InvoiceStatus.draft, InvoiceStatus.rejected]))
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     if on_hold_invoices > 0:
-        gaps.append(ComplianceGap(
-            gap_id="GAP-003",
-            control_id="CTL-004",
-            finding=f"{on_hold_invoices} invoices from on-hold vendors were processed",
-            severity="high",
-            status="open",
-            recommendation="Add pre-processing vendor status check to block on-hold vendor invoices",
-            evidence_count=on_hold_invoices,
-        ))
+        gaps.append(
+            ComplianceGap(
+                gap_id="GAP-003",
+                control_id="CTL-004",
+                finding=f"{on_hold_invoices} invoices from on-hold vendors were processed",
+                severity="high",
+                status="open",
+                recommendation="Add pre-processing vendor status check to block on-hold vendor invoices",
+                evidence_count=on_hold_invoices,
+            )
+        )
 
     # Audit trail completeness check
     total_invoices = db.query(func.count(Invoice.id)).scalar() or 0
     invoices_with_audit = (
-        db.query(func.count(func.distinct(AuditLog.entity_id)))
-        .filter(AuditLog.entity_type == "invoice")
-        .scalar() or 0
+        db.query(func.count(func.distinct(AuditLog.entity_id))).filter(AuditLog.entity_type == "invoice").scalar() or 0
     )
     no_audit = total_invoices - invoices_with_audit
     if no_audit > 0:
-        gaps.append(ComplianceGap(
-            gap_id="GAP-004",
-            control_id="CTL-007",
-            finding=f"{no_audit} invoices have no audit trail entries",
-            severity="medium",
-            status="remediation",
-            recommendation="Verify audit logging is enabled for all invoice creation paths",
-            evidence_count=no_audit,
-        ))
+        gaps.append(
+            ComplianceGap(
+                gap_id="GAP-004",
+                control_id="CTL-007",
+                finding=f"{no_audit} invoices have no audit trail entries",
+                severity="medium",
+                status="remediation",
+                recommendation="Verify audit logging is enabled for all invoice creation paths",
+                evidence_count=no_audit,
+            )
+        )
 
     # Payment term compliance (always show as planned gap)
-    gaps.append(ComplianceGap(
-        gap_id="GAP-005",
-        control_id="CTL-010",
-        finding="Payment term compliance monitoring not yet automated",
-        severity="low",
-        status="open",
-        recommendation="Implement automated payment scheduling based on contracted terms",
-        evidence_count=0,
-    ))
+    gaps.append(
+        ComplianceGap(
+            gap_id="GAP-005",
+            control_id="CTL-010",
+            finding="Payment term compliance monitoring not yet automated",
+            severity="low",
+            status="open",
+            recommendation="Implement automated payment scheduling based on contracted terms",
+            evidence_count=0,
+        )
+    )
 
     return gaps
 

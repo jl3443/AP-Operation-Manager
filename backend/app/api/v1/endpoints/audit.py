@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -21,11 +19,11 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 def list_audit_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    entity_type: Optional[str] = Query(None),
-    action: Optional[str] = Query(None),
-    actor_name: Optional[str] = Query(None),
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
+    entity_type: str | None = Query(None),
+    action: str | None = Query(None),
+    actor_name: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -44,12 +42,7 @@ def list_audit_logs(
         query = query.filter(func.date(AuditLog.timestamp) <= date_to)
 
     total = query.count()
-    items = (
-        query.order_by(AuditLog.timestamp.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    items = query.order_by(AuditLog.timestamp.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
     total_pages = (total + page_size - 1) // page_size
 

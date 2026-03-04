@@ -1,0 +1,121 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    name: "Claude Code Review"
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.draft == false &&
+      github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > /tmp/pr_diff.txt
+
+          # Truncate oversized diffs
+          DIFF_SIZE=$(wc -c < /tmp/pr_diff.txt)
+          MAX_SIZE=100000
+          if [ "$DIFF_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "::warning::Diff is ${DIFF_SIZE} bytes — truncating to ${MAX_SIZE}"
+            head -c "$MAX_SIZE" /tmp/pr_diff.txt > /tmp/pr_diff_trunc.txt
+            mv /tmp/pr_diff_trunc.txt /tmp/pr_diff.txt
+          fi
+
+      - name: Get changed files
+        id: files
+        run: |
+          {
+            echo "changed_files<<EOF"
+            git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run AI review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "⚠️ ANTHROPIC_API_KEY not set — skipping AI review"
+            echo "No review available (API key not configured)." > /tmp/review.md
+            exit 0
+          fi
+
+          DIFF=$(cat /tmp/pr_diff.txt)
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_BODY=$(echo "${{ github.event.pull_request.body }}" | head -c 2000)
+          CHANGED_FILES="${{ steps.files.outputs.changed_files }}"
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg model "claude-haiku-4-5-20251001" \
+              --arg title "$PR_TITLE" \
+              --arg body "$PR_BODY" \
+              --arg files "$CHANGED_FILES" \
+              --arg diff "$DIFF" \
+              '{
+                model: $model,
+                max_tokens: 2048,
+                messages: [{
+                  role: "user",
+                  content: ("You are a senior engineer reviewing a PR for an AP Operations Manager (monorepo: frontend/ = Next.js 15 + React 19 + TypeScript, backend/ = FastAPI + Python 3.12 + SQLAlchemy). Review the diff and respond with EXACTLY this markdown structure:\n\n### Summary\n[1-2 sentences]\n\n### Risk Assessment\n[Low/Medium/High] — [reason]\n\n### Issues Found\n[Bullet list or \"No issues found.\"]\n\n### Suggestions\n[Bullet list or \"No suggestions.\"]\n\n### Security\n[Notes or \"No security concerns.\"]\n\nSkip style/formatting (ruff + ESLint handle that). Focus on logic bugs, security, performance, and architecture.\n\n## PR: " + $title + "\n\n## Description\n" + $body + "\n\n## Changed Files\n" + $files + "\n\n## Diff\n```diff\n" + $diff + "\n```")
+                }]
+              }'
+            )")
+
+          echo "$RESPONSE" | jq -r '.content[0].text // "Error: Could not generate review."' > /tmp/review.md
+
+      - name: Post review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('/tmp/review.md', 'utf8');
+
+            const body = `## 🤖 AI Code Review\n\n${review}\n\n---\n*Automated review by Claude AI · advisory only*`;
+
+            // Find existing bot comment to update (no spam)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('🤖 AI Code Review')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

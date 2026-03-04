@@ -18,9 +18,9 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.invoice import Invoice, InvoiceLineItem, InvoiceStatus
-from app.models.vendor import Vendor
 from app.models.audit import AuditLog
+from app.models.invoice import Invoice
+from app.models.vendor import Vendor
 from app.services.ai_service import ai_service
 
 logger = logging.getLogger(__name__)
@@ -86,11 +86,13 @@ def _rule_based_validation(
     for field in required:
         val = extracted_data.get(field)
         if val is None or (isinstance(val, str) and not val.strip()):
-            issues.append({
-                "field": field,
-                "issue": f"Missing required field: {field}",
-                "severity": "error",
-            })
+            issues.append(
+                {
+                    "field": field,
+                    "issue": f"Missing required field: {field}",
+                    "severity": "error",
+                }
+            )
 
     # Total amount sanity
     total = extracted_data.get("total_amount")
@@ -98,17 +100,21 @@ def _rule_based_validation(
         try:
             total_f = float(total)
             if total_f == 0:
-                issues.append({
-                    "field": "total_amount",
-                    "issue": "Total amount is zero",
-                    "severity": "warning",
-                })
+                issues.append(
+                    {
+                        "field": "total_amount",
+                        "issue": "Total amount is zero",
+                        "severity": "warning",
+                    }
+                )
         except (ValueError, TypeError):
-            issues.append({
-                "field": "total_amount",
-                "issue": "Total amount is not a valid number",
-                "severity": "error",
-            })
+            issues.append(
+                {
+                    "field": "total_amount",
+                    "issue": "Total amount is not a valid number",
+                    "severity": "error",
+                }
+            )
 
     # Line item math checks
     line_items = extracted_data.get("line_items", [])
@@ -121,26 +127,30 @@ def _rule_based_validation(
 
             expected = round(qty * price, 2)
             if expected > 0 and abs(expected - line_total) > 0.02:
-                issues.append({
-                    "field": f"line_items[{i}].line_total",
-                    "issue": f"qty({qty}) * price({price}) = {expected}, but line_total = {line_total}",
-                    "severity": "warning",
-                })
+                issues.append(
+                    {
+                        "field": f"line_items[{i}].line_total",
+                        "issue": f"qty({qty}) * price({price}) = {expected}, but line_total = {line_total}",
+                        "severity": "warning",
+                    }
+                )
             computed_total += line_total
 
         # Compare line total sum vs header total
         header_total = float(extracted_data.get("total_amount", 0) or 0)
         subtotal = float(extracted_data.get("subtotal", 0) or 0)
-        tax = float(extracted_data.get("tax_amount", 0) or 0)
+        float(extracted_data.get("tax_amount", 0) or 0)
 
         # Allow small rounding difference
         compare_to = subtotal if subtotal > 0 else header_total
         if compare_to > 0 and abs(computed_total - compare_to) > 1.0:
-            issues.append({
-                "field": "line_items_total",
-                "issue": f"Sum of line totals ({computed_total:.2f}) differs from header ({compare_to:.2f})",
-                "severity": "warning",
-            })
+            issues.append(
+                {
+                    "field": "line_items_total",
+                    "issue": f"Sum of line totals ({computed_total:.2f}) differs from header ({compare_to:.2f})",
+                    "severity": "warning",
+                }
+            )
 
     # Date validation
     for date_field in ["invoice_date", "due_date"]:
@@ -150,23 +160,29 @@ def _rule_based_validation(
                 parsed = datetime.strptime(str(date_str), "%Y-%m-%d").date()
                 today = date.today()
                 if parsed > today + timedelta(days=30):
-                    issues.append({
-                        "field": date_field,
-                        "issue": f"{date_field} is more than 30 days in the future",
-                        "severity": "warning",
-                    })
+                    issues.append(
+                        {
+                            "field": date_field,
+                            "issue": f"{date_field} is more than 30 days in the future",
+                            "severity": "warning",
+                        }
+                    )
                 if parsed < today - timedelta(days=730):
-                    issues.append({
-                        "field": date_field,
-                        "issue": f"{date_field} is more than 2 years old",
-                        "severity": "warning",
-                    })
+                    issues.append(
+                        {
+                            "field": date_field,
+                            "issue": f"{date_field} is more than 2 years old",
+                            "severity": "warning",
+                        }
+                    )
             except ValueError:
-                issues.append({
-                    "field": date_field,
-                    "issue": f"Invalid date format: {date_str}",
-                    "severity": "error",
-                })
+                issues.append(
+                    {
+                        "field": date_field,
+                        "issue": f"Invalid date format: {date_str}",
+                        "severity": "error",
+                    }
+                )
 
     # Vendor cross-check
     if vendor:
@@ -181,11 +197,13 @@ def _rule_based_validation(
                 db_words = set(db_lower.split())
                 overlap = ext_words & db_words
                 if len(overlap) < 1:
-                    issues.append({
-                        "field": "vendor_name",
-                        "issue": f"Extracted vendor '{vendor_name_extracted}' does not match DB vendor '{vendor.name}'",
-                        "severity": "warning",
-                    })
+                    issues.append(
+                        {
+                            "field": "vendor_name",
+                            "issue": f"Extracted vendor '{vendor_name_extracted}' does not match DB vendor '{vendor.name}'",
+                            "severity": "warning",
+                        }
+                    )
 
     return issues
 
@@ -237,24 +255,26 @@ def classify_and_validate(
         invoice.document_type = "invoice"
 
     # Store classification metadata in a dedicated audit log
-    db.add(AuditLog(
-        entity_type="invoice",
-        entity_id=invoice.id,
-        action="ai_classification",
-        actor_type="ai_agent",
-        actor_name="Classification Agent",
-        changes={
-            "document_type": doc_type,
-            "quality_score": result.get("quality_score", 0),
-        },
-        evidence={
-            "classification_confidence": result.get("classification_confidence", 0),
-            "validation_passed": result.get("validation_passed", False),
-            "needs_human_review": result.get("needs_human_review", False),
-            "issue_count": len(result.get("validation_issues", [])),
-            "ocr_confidence": ocr_confidence,
-        },
-    ))
+    db.add(
+        AuditLog(
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="ai_classification",
+            actor_type="ai_agent",
+            actor_name="Classification Agent",
+            changes={
+                "document_type": doc_type,
+                "quality_score": result.get("quality_score", 0),
+            },
+            evidence={
+                "classification_confidence": result.get("classification_confidence", 0),
+                "validation_passed": result.get("validation_passed", False),
+                "needs_human_review": result.get("needs_human_review", False),
+                "issue_count": len(result.get("validation_issues", [])),
+                "ocr_confidence": ocr_confidence,
+            },
+        )
+    )
 
     db.commit()
 
@@ -348,15 +368,10 @@ def _build_fallback_result(
             "line_items": "high" if extracted_data.get("line_items") else "low",
         },
         "needs_human_review": needs_review,
-        "review_reasons": (
-            [f"{error_count} validation error(s) found"] if error_count else []
-        ) + (
-            ["Low OCR confidence"] if ocr_confidence < 0.7 else []
-        ),
+        "review_reasons": ([f"{error_count} validation error(s) found"] if error_count else [])
+        + (["Low OCR confidence"] if ocr_confidence < 0.7 else []),
         "quality_score": round(quality, 2),
-        "recommendations": (
-            ["Review flagged validation errors before processing"] if error_count else []
-        ),
+        "recommendations": (["Review flagged validation errors before processing"] if error_count else []),
     }
 
 

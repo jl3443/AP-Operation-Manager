@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.audit import ActorType
 from app.models.exception import Exception_
 from app.models.goods_receipt import GoodsReceipt, GRNLineItem
-from app.models.invoice import Invoice, InvoiceLineItem
+from app.models.invoice import Invoice
 from app.models.matching import MatchResult
 from app.models.purchase_order import POLineItem, PurchaseOrder
 from app.models.resolution import (
@@ -127,9 +127,9 @@ RULES:
 
 def _build_resolver_context(db: Session, exception: Exception_) -> str:
     """Build rich context for Claude to generate a resolution plan."""
-    invoice = db.query(Invoice).options(
-        joinedload(Invoice.line_items)
-    ).filter(Invoice.id == exception.invoice_id).first()
+    invoice = (
+        db.query(Invoice).options(joinedload(Invoice.line_items)).filter(Invoice.id == exception.invoice_id).first()
+    )
 
     vendor = db.query(Vendor).filter(Vendor.id == invoice.vendor_id).first() if invoice else None
 
@@ -145,18 +145,24 @@ def _build_resolver_context(db: Session, exception: Exception_) -> str:
     po_info = "No PO linked."
     po = None
     if match and match.matched_po_id:
-        po = db.query(PurchaseOrder).options(
-            joinedload(PurchaseOrder.line_items)
-        ).filter(PurchaseOrder.id == match.matched_po_id).first()
+        po = (
+            db.query(PurchaseOrder)
+            .options(joinedload(PurchaseOrder.line_items))
+            .filter(PurchaseOrder.id == match.matched_po_id)
+            .first()
+        )
     if not po and invoice:
         # Try to find PO via line items
         po_line_ids = [li.po_line_id for li in invoice.line_items if li.po_line_id]
         if po_line_ids:
             po_line = db.query(POLineItem).filter(POLineItem.id == po_line_ids[0]).first()
             if po_line:
-                po = db.query(PurchaseOrder).options(
-                    joinedload(PurchaseOrder.line_items)
-                ).filter(PurchaseOrder.id == po_line.po_id).first()
+                po = (
+                    db.query(PurchaseOrder)
+                    .options(joinedload(PurchaseOrder.line_items))
+                    .filter(PurchaseOrder.id == po_line.po_id)
+                    .first()
+                )
 
     if po:
         po_lines_str = "\n".join(
@@ -178,9 +184,7 @@ def _build_resolver_context(db: Session, exception: Exception_) -> str:
             grn_parts = []
             for grn in grns:
                 grn_lines = db.query(GRNLineItem).filter(GRNLineItem.grn_id == grn.id).all()
-                lines_str = ", ".join(
-                    f"Qty received: {gl.quantity_received}" for gl in grn_lines
-                )
+                lines_str = ", ".join(f"Qty received: {gl.quantity_received}" for gl in grn_lines)
                 grn_parts.append(f"GRN {grn.grn_number} ({grn.receipt_date}): {lines_str}")
             grn_info = "\n".join(grn_parts)
 
@@ -278,9 +282,7 @@ def generate_resolution_plan(db: Session, exception_id: uuid.UUID) -> Resolution
         "assisted": AutomationLevel.assisted,
         "manual": AutomationLevel.manual,
     }
-    automation_level = level_map.get(
-        parsed.get("automation_level", "assisted"), AutomationLevel.assisted
-    )
+    automation_level = level_map.get(parsed.get("automation_level", "assisted"), AutomationLevel.assisted)
 
     # Create plan
     plan = ResolutionPlan(

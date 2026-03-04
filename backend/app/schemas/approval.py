@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -12,12 +11,12 @@ from app.models.approval import AIRecommendation, ApprovalStatus
 
 
 class ApprovalAction(BaseModel):
-    comments: Optional[str] = None
+    comments: str | None = None
 
 
 class BatchApprovalAction(BaseModel):
-    task_ids: List[uuid.UUID]
-    comments: Optional[str] = None
+    task_ids: list[uuid.UUID]
+    comments: str | None = None
 
 
 class ApprovalTaskResponse(BaseModel):
@@ -27,10 +26,10 @@ class ApprovalTaskResponse(BaseModel):
     approval_level: int
     approval_order: int
     status: ApprovalStatus
-    ai_recommendation: Optional[AIRecommendation] = None
-    ai_recommendation_reason: Optional[str] = None
-    decision_at: Optional[datetime] = None
-    comments: Optional[str] = None
+    ai_recommendation: AIRecommendation | None = None
+    ai_recommendation_reason: str | None = None
+    decision_at: datetime | None = None
+    comments: str | None = None
     created_at: datetime
     updated_at: datetime
 

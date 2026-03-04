@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from typing import Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.invoice import Invoice, InvoiceLineItem, InvoiceStatus
@@ -55,14 +53,9 @@ def create_invoice(db: Session, payload: InvoiceCreate) -> Invoice:
     return invoice
 
 
-def get_invoice(db: Session, invoice_id: uuid.UUID) -> Optional[Invoice]:
+def get_invoice(db: Session, invoice_id: uuid.UUID) -> Invoice | None:
     """Return a single invoice with eager-loaded line items."""
-    return (
-        db.query(Invoice)
-        .options(joinedload(Invoice.line_items))
-        .filter(Invoice.id == invoice_id)
-        .first()
-    )
+    return db.query(Invoice).options(joinedload(Invoice.line_items)).filter(Invoice.id == invoice_id).first()
 
 
 def list_invoices(
@@ -70,9 +63,9 @@ def list_invoices(
     *,
     page: int = 1,
     page_size: int = 20,
-    status: Optional[str] = None,
-    vendor_id: Optional[uuid.UUID] = None,
-    search: Optional[str] = None,
+    status: str | None = None,
+    vendor_id: uuid.UUID | None = None,
+    search: str | None = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
 ) -> dict:
@@ -95,12 +88,7 @@ def list_invoices(
     else:
         query = query.order_by(sort_col.desc())
 
-    items = (
-        query.options(joinedload(Invoice.line_items))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    items = query.options(joinedload(Invoice.line_items)).offset((page - 1) * page_size).limit(page_size).all()
 
     # deduplicate items from joinedload
     seen: set[uuid.UUID] = set()
@@ -119,9 +107,7 @@ def list_invoices(
     }
 
 
-def update_invoice(
-    db: Session, invoice_id: uuid.UUID, payload: InvoiceUpdate
-) -> Optional[Invoice]:
+def update_invoice(db: Session, invoice_id: uuid.UUID, payload: InvoiceUpdate) -> Invoice | None:
     """Partially update an invoice."""
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
