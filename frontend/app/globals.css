@@ -136,3 +136,99 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Print styles ─────────────────────────────────────────────────── */
+@media print {
+  /* Force light theme */
+  :root {
+    color-scheme: light !important;
+  }
+
+  /* Hide sidebar, header bar, all buttons, scrollbar chrome */
+  [data-sidebar],
+  aside,
+  nav,
+  header,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  /* ── Unwrap layout containers so content flows naturally ── */
+  body,
+  html {
+    overflow: visible !important;
+    height: auto !important;
+    width: auto !important;
+  }
+
+  /* Outer shell: div.flex.h-screen.overflow-hidden */
+  .flex.h-screen {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Main column: div.flex.flex-1.flex-col.overflow-hidden */
+  .flex-1.flex-col {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  /* ScrollArea wrapper */
+  .flex-1.overflow-hidden,
+  [data-radix-scroll-area-viewport] {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  main {
+    padding: 0.15in !important;
+    overflow: visible !important;
+  }
+
+  /* ── Force responsive grids to their full column counts ── */
+  /* KPI cards row: sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 */
+  [class*="xl:grid-cols-6"] {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+
+  /* Three-column chart rows */
+  [class*="lg:grid-cols-3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  /* Two-column chart rows */
+  [class*="lg:grid-cols-2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* Tighter grid gaps for print */
+  .grid {
+    gap: 0.3rem !important;
+  }
+
+  /* Tighter vertical spacing */
+  .space-y-2 > * + * { margin-top: 0.2rem !important; }
+  .space-y-3 > * + * { margin-top: 0.25rem !important; }
+
+  /* Limit AI summary height so long text doesn't push content off-page */
+  .from-blue-50\/80 {
+    max-height: 4.5rem !important;
+    overflow: hidden !important;
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.4rem !important;
+  }
+
+  /* ── Ensure chart colors print correctly ── */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* ── Page setup ── */
+  @page {
+    size: A4 landscape;
+    margin: 0.4in;
+  }
+}

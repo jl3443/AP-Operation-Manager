@@ -8,8 +8,7 @@ import {
   ArrowRight,
   Zap,
   Timer,
-  Download,
-  Loader2,
+  Printer,
 } from "lucide-react"
 import Link from "next/link"
 import {
@@ -21,12 +20,10 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { toast } from "sonner"
 
 import { useDashboardKPIs, useFunnelData, useTopVendors, useTrends } from "@/hooks/use-dashboard"
 import { useTouchlessRate } from "@/hooks/use-compliance"
 import { useInvoices } from "@/hooks/use-invoices"
-import { useExportPdfReport } from "@/hooks/use-analytics"
 import { KpiCard } from "@/components/kpi-card"
 import { AiSummaryCard } from "@/components/ai-summary-card"
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
@@ -96,8 +93,6 @@ export default function DashboardPage() {
     sort_by: "created_at",
     sort_order: "desc",
   })
-  const exportPdf = useExportPdfReport()
-
   const funnelChartData = funnel?.stages.map((s) => ({
     stage: s.stage.charAt(0).toUpperCase() + s.stage.slice(1).replaceAll("_", " "),
     count: s.count,
@@ -126,10 +121,7 @@ export default function DashboardPage() {
   }))
 
   function handleExportPdf() {
-    exportPdf.mutate(undefined, {
-      onSuccess: () => toast.success("PDF report downloaded successfully"),
-      onError: () => toast.error("Failed to export PDF report"),
-    })
+    window.print()
   }
 
   return (
@@ -139,12 +131,8 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
         </div>
-        <Button onClick={handleExportPdf} disabled={exportPdf.isPending} size="sm" variant="outline">
-          {exportPdf.isPending ? (
-            <Loader2 className="size-4 animate-spin mr-2" />
-          ) : (
-            <Download className="size-4 mr-2" />
-          )}
+        <Button onClick={handleExportPdf} size="sm" variant="outline">
+          <Printer className="size-4 mr-2" />
           Export PDF
         </Button>
       </div>

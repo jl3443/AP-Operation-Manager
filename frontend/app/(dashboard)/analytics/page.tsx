@@ -10,8 +10,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts"
-import { Download, Loader2 } from "lucide-react"
-import { toast } from "sonner"
+import { Printer } from "lucide-react"
 
 import {
   useAgingAnalysis,
@@ -19,7 +18,6 @@ import {
   useVendorRiskDistribution,
   useMonthlyComparison,
   useApprovalTurnaround,
-  useExportPdfReport,
 } from "@/hooks/use-analytics"
 import { AiSummaryCard } from "@/components/ai-summary-card"
 import { ChartSkeleton } from "@/components/loading-skeleton"
@@ -109,7 +107,6 @@ export default function AnalyticsPage() {
   const { data: monthly, isLoading: monthlyLoading } = useMonthlyComparison()
   const { data: riskDist, isLoading: riskLoading } = useVendorRiskDistribution()
   const { data: turnaround, isLoading: turnaroundLoading } = useApprovalTurnaround()
-  const exportPdf = useExportPdfReport()
 
   // -- Transform data --
 
@@ -152,14 +149,7 @@ export default function AnalyticsPage() {
     })) ?? []
 
   function handleExportPdf() {
-    exportPdf.mutate(undefined, {
-      onSuccess: () => {
-        toast.success("PDF report downloaded successfully")
-      },
-      onError: () => {
-        toast.error("Failed to export PDF report")
-      },
-    })
+    window.print()
   }
 
   return (
@@ -172,12 +162,8 @@ export default function AnalyticsPage() {
             In-depth analytics across invoices, exceptions, vendors, and approvals.
           </p>
         </div>
-        <Button onClick={handleExportPdf} disabled={exportPdf.isPending} size="sm" variant="outline">
-          {exportPdf.isPending ? (
-            <Loader2 className="size-4 animate-spin mr-2" />
-          ) : (
-            <Download className="size-4 mr-2" />
-          )}
+        <Button onClick={handleExportPdf} size="sm" variant="outline">
+          <Printer className="size-4 mr-2" />
           Export PDF
         </Button>
       </div>
