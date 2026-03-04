@@ -159,6 +159,81 @@ npm run test:e2e:ui                # interactive UI mode
 
 Covers 8 test suites: authentication, dashboard, invoices, vendors, exceptions, approvals, audit trail, and data import.
 
+## CI/CD & AI Workflow
+
+![CI](https://github.com/jl3443/AP-Operation-Manager/actions/workflows/ci.yml/badge.svg)
+![Deploy](https://github.com/jl3443/AP-Operation-Manager/actions/workflows/deploy.yml/badge.svg)
+
+Three GitHub Actions workflows automate quality, review, and deployment:
+
+```mermaid
+flowchart TB
+    subgraph trigger["🔀 Triggers"]
+        PR["Pull Request"]
+        Push["Push to main"]
+    end
+
+    PR --> CI
+    PR --> AIReview
+    Push --> CI
+    Push --> Deploy
+
+    subgraph CI["⚙️ CI Pipeline"]
+        direction TB
+
+        subgraph backend_jobs["Backend"]
+            BL["🔍 Lint<br/><small>ruff check + format</small>"]
+            BT["🧪 Test<br/><small>pytest + PostgreSQL + Redis</small>"]
+            BM["🗃️ Migrations<br/><small>alembic upgrade head<br/>alembic check</small>"]
+        end
+
+        subgraph frontend_jobs["Frontend"]
+            FL["📝 Lint & Build<br/><small>tsc --noEmit<br/>ESLint<br/>next build</small>"]
+        end
+
+        BT --> E2E
+        FL --> E2E
+
+        E2E["🎭 E2E Tests<br/><small>docker-compose full stack<br/>Playwright · Chromium</small>"]
+    end
+
+    subgraph AIReview["🤖 AI Code Review"]
+        direction TB
+        Diff["Get PR Diff"]
+        Claude["Claude API<br/><small>haiku · structured review</small>"]
+        Comment["Post PR Comment<br/><small>Summary · Risk · Issues<br/>Suggestions · Security</small>"]
+        Diff --> Claude --> Comment
+    end
+
+    subgraph Deploy["🚀 Deploy"]
+        direction TB
+        BuildBE["Build Backend<br/><small>Docker · python:3.12</small>"]
+        BuildFE["Build Frontend<br/><small>Docker · node:20</small>"]
+        GHCR["Push to GHCR<br/><small>ghcr.io · sha + latest tags</small>"]
+        BuildBE --> GHCR
+        BuildFE --> GHCR
+    end
+
+    style trigger fill:#f0f4ff,stroke:#4a6cf7,color:#1a1a2e
+    style CI fill:#f0fdf4,stroke:#22c55e,color:#1a1a2e
+    style AIReview fill:#fef3f2,stroke:#ef4444,color:#1a1a2e
+    style Deploy fill:#fdf4ff,stroke:#a855f7,color:#1a1a2e
+    style E2E fill:#dbeafe,stroke:#3b82f6,color:#1a1a2e
+```
+
+### Workflow Details
+
+| Workflow | Trigger | Jobs | Key Features |
+|----------|---------|------|-------------|
+| **CI** | Push / PR to `main` | Backend Lint, Test, Migrations + Frontend Lint & Build + E2E | PostgreSQL & Redis service containers, Playwright with artifact upload, Alembic migration check |
+| **AI Review** | PR opened / updated | Claude Code Review | Structured review (risk, issues, suggestions, security), auto-updates comment on re-push, skips drafts & dependabot |
+| **Deploy** | Push to `main` | Build & Push (matrix) | Parallel backend + frontend Docker builds, GHCR with `sha-<commit>` + `latest` tags, GHA layer caching |
+
+### Setup Required
+
+1. **GitHub Secret**: Add `ANTHROPIC_API_KEY` in repo Settings → Secrets → Actions
+2. **Branch Protection** (recommended): Require `Backend · Lint`, `Backend · Test`, `Frontend · Lint & Build` to pass before merge
+
 ## User Roles
 
 | Role | Capabilities |
