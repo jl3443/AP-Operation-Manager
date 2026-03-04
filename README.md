@@ -13,121 +13,86 @@ docker-compose.yml PostgreSQL, Redis, MinIO (S3), Backend, Frontend
 ### AI-Powered Processing Pipeline
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph Ingestion["Ingestion"]
-        Upload["PDF / Image Upload"]
-        CSV["CSV / Excel Import"]
-        Email["Email Attachments"]
-    end
-
-    subgraph Extraction["AI Extraction - 3 Tier OCR"]
         direction TB
-        Tier1["pdfplumber - Digital PDFs"]
-        Tier2["Tesseract OCR - Scanned PDFs"]
-        Tier3["Claude Vision - Structured JSON"]
-        Tier1 -->|"fallback"| Tier2 -->|"fallback"| Tier3
+        Upload["PDF / Image"]
+        CSV["CSV / Excel"]
+        Email["Email"]
     end
 
-    subgraph Classification["AI Classification"]
-        Classify["Document Type + Quality Score"]
-        GLPredict["GL Account Prediction"]
-        Confidence["Confidence Scoring"]
-    end
-
-    subgraph CorePipeline["Core Pipeline"]
+    subgraph Intelligence["AI Intelligence"]
         direction TB
-        VendorRes["Vendor Resolution"]
-        DupCheck["Duplicate Detection"]
-        AutoLink["Auto-Link PO Lines"]
-        MatchEng["Match Engine"]
-        VendorRes --> DupCheck --> AutoLink --> MatchEng
+        OCR["3-Tier OCR"]
+        Classify["Classification"]
+        GL["GL Prediction"]
+        OCR --> Classify --> GL
     end
 
-    MatchResult{"Match Result"}
-
-    subgraph MatchDetail["Match Engine"]
-        TwoWay["2-Way: Invoice vs PO"]
-        ThreeWay["3-Way: Invoice vs PO vs GRN"]
-        ToleranceEval["Tolerance Evaluation"]
-    end
-
-    subgraph ExceptionQueue["Exception Queue"]
+    subgraph Pipeline["Core Pipeline"]
         direction TB
-        ExTypes["12 Exception Types"]
-        AIAnalysis["AI Severity Analysis"]
-        ExTypes --> AIAnalysis
+        Vendor["Vendor Resolution"]
+        Dup["Duplicate Detection"]
+        Link["Auto-Link PO"]
+        Match["Match Engine"]
+        Vendor --> Dup --> Link --> Match
     end
 
-    subgraph ResolutionEngine["AI Resolution Engine"]
+    MR{"Match Result"}
+
+    subgraph Exceptions["Exception Queue"]
         direction TB
-        Playbook["13 Playbooks"]
-        ResPlan["Resolution Plan"]
-        AutoExec["100+ Action Handlers"]
-        HumanGate{"Needs Human?"}
-        Playbook --> ResPlan --> AutoExec --> HumanGate
+        Types["12 Exception Types"]
+        AI_Sev["AI Severity Analysis"]
+        Types --> AI_Sev
     end
 
-    subgraph AutoResolution["Auto-Resolution"]
-        TolCheck["Within Tolerance"]
-        AutoResolve["Auto-Resolve"]
-        TolCheck --> AutoResolve
-    end
-
-    subgraph ApprovalWF["Approval Workflow"]
+    subgraph Resolution["AI Resolution"]
         direction TB
-        AIRisk["AI Risk Assessment"]
+        Play["13 Playbooks"]
+        Plan["Resolution Plan"]
+        Exec["100+ Handlers"]
+        Human{"Human?"}
+        Play --> Plan --> Exec --> Human
+    end
+
+    subgraph Approval["Approval"]
+        direction TB
+        Risk["AI Risk Assessment"]
         Matrix["Approval Matrix"]
-        Decision{"Decision"}
-        AIRisk --> Matrix --> Decision
+        Dec{"Decision"}
+        Risk --> Matrix --> Dec
     end
 
     subgraph Output["Output"]
-        Posted["Posted to ERP"]
-        Dashboard["KPI Dashboard"]
-        Analytics["Analytics + Reports"]
+        direction TB
+        ERP["Posted to ERP"]
+        Dash["KPI Dashboard"]
+        Report["Analytics"]
         Audit["Audit Trail"]
     end
 
-    subgraph BGTasks["Background Tasks - Celery"]
-        BatchMatch["Batch Matching"]
-        AutoResScan["Auto-Resolution Scan"]
-        DupScan["Duplicate Scan"]
-    end
+    Ingestion --> Intelligence --> Pipeline
+    Match --> MR
 
-    ChatPanel["AI Chat Assistant"]
+    MR -->|"Matched"| Approval
+    MR -->|"Variance"| Exceptions
+    MR -->|"Tolerance"| Approval
 
-    Ingestion --> Extraction --> Classification --> CorePipeline
-    MatchEng --> MatchResult
-    MatchEng -.-> MatchDetail
+    Exceptions --> Resolution
+    Human -->|"No"| Approval
+    Human -->|"Yes"| Exceptions
 
-    MatchResult -->|"Matched"| ApprovalWF
-    MatchResult -->|"Variance"| ExceptionQueue
-    MatchResult -->|"Near Tolerance"| AutoResolution
-
-    AutoResolution -->|"Resolved"| ApprovalWF
-    AutoResolution -->|"Exceeds"| ExceptionQueue
-
-    ExceptionQueue --> ResolutionEngine
-    HumanGate -->|"Yes"| ExceptionQueue
-    HumanGate -->|"No"| ApprovalWF
-
-    Decision -->|"Approved"| Output
-    Decision -->|"Rejected"| ExceptionQueue
-
-    BGTasks -.-> CorePipeline
-    ChatPanel -.-> Output
+    Dec -->|"Approved"| Output
+    Dec -->|"Rejected"| Exceptions
 
     style Ingestion fill:#e8f4fd,stroke:#2196F3,color:#0d47a1
-    style Extraction fill:#fff3e0,stroke:#ff9800,color:#e65100
-    style Classification fill:#fff3e0,stroke:#ff9800,color:#e65100
-    style CorePipeline fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
-    style MatchDetail fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
-    style ExceptionQueue fill:#ffebee,stroke:#f44336,color:#b71c1c
-    style ResolutionEngine fill:#ffebee,stroke:#f44336,color:#b71c1c
-    style AutoResolution fill:#fff8e1,stroke:#ffc107,color:#f57f17
-    style ApprovalWF fill:#e8f5e9,stroke:#4caf50,color:#1b5e20
+    style Intelligence fill:#fff3e0,stroke:#ff9800,color:#e65100
+    style Pipeline fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
+    style Exceptions fill:#ffebee,stroke:#f44336,color:#b71c1c
+    style Resolution fill:#ffebee,stroke:#f44336,color:#b71c1c
+    style Approval fill:#e8f5e9,stroke:#4caf50,color:#1b5e20
     style Output fill:#e0f2f1,stroke:#009688,color:#004d40
-    style BGTasks fill:#eceff1,stroke:#607d8b,color:#263238
 ```
 
 ## Key Features
