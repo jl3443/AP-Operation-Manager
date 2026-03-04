@@ -14,143 +14,120 @@ docker-compose.yml PostgreSQL, Redis, MinIO (S3), Backend, Frontend
 
 ```mermaid
 flowchart TB
-    %% ── INGESTION ──────────────────────────────────────────────
-    subgraph Ingestion["📥 Ingestion"]
-        direction LR
-        Upload["PDF / Image<br/>Upload"]
-        CSV["CSV / Excel<br/>Bulk Import"]
-        Email["Email<br/>Attachments"]
+    subgraph Ingestion["Ingestion"]
+        Upload["PDF / Image Upload"]
+        CSV["CSV / Excel Import"]
+        Email["Email Attachments"]
     end
 
-    %% ── OCR & INTELLIGENCE ────────────────────────────────────
-    subgraph OCR["🧠 AI Extraction"]
+    subgraph Extraction["AI Extraction - 3 Tier OCR"]
         direction TB
-        Tier1["Tier 1 · pdfplumber<br/><small>Digital PDF text extraction</small>"]
-        Tier2["Tier 2 · Tesseract OCR<br/><small>Scanned PDF → image → text</small>"]
-        Tier3["Tier 3 · Claude Vision<br/><small>Structured JSON extraction</small>"]
-        Tier1 -->|"insufficient text"| Tier2
-        Tier2 -->|fallback| Tier3
+        Tier1["pdfplumber - Digital PDFs"]
+        Tier2["Tesseract OCR - Scanned PDFs"]
+        Tier3["Claude Vision - Structured JSON"]
+        Tier1 -->|"fallback"| Tier2 -->|"fallback"| Tier3
     end
 
-    subgraph Intelligence["🤖 AI Classification"]
+    subgraph Classification["AI Classification"]
+        Classify["Document Type + Quality Score"]
+        GLPredict["GL Account Prediction"]
+        Confidence["Confidence Scoring"]
+    end
+
+    subgraph CorePipeline["Core Pipeline"]
         direction TB
-        Classify["Document Type<br/>& Quality Score"]
-        GLPredict["GL Account<br/>Prediction"]
-        Confidence["Confidence<br/>Scoring"]
+        VendorRes["Vendor Resolution"]
+        DupCheck["Duplicate Detection"]
+        AutoLink["Auto-Link PO Lines"]
+        MatchEng["Match Engine"]
+        VendorRes --> DupCheck --> AutoLink --> MatchEng
     end
 
-    %% ── CORE PIPELINE ─────────────────────────────────────────
-    subgraph Pipeline["⚙️ Core Pipeline"]
+    MatchResult{"Match Result"}
+
+    subgraph MatchDetail["Match Engine"]
+        TwoWay["2-Way: Invoice vs PO"]
+        ThreeWay["3-Way: Invoice vs PO vs GRN"]
+        ToleranceEval["Tolerance Evaluation"]
+    end
+
+    subgraph ExceptionQueue["Exception Queue"]
         direction TB
-        VendorRes["Vendor<br/>Resolution"]
-        DupCheck["🔍 Duplicate<br/>Detection"]
-        AutoLink["Auto-Link<br/>PO Lines"]
-        Match["Match Engine"]
-        MatchResult{"Match<br/>Result"}
-
-        VendorRes --> DupCheck --> AutoLink --> Match --> MatchResult
-    end
-
-    subgraph MatchEngine["Match Engine Detail"]
-        direction LR
-        TwoWay["2-Way Match<br/><small>Invoice ↔ PO</small>"]
-        ThreeWay["3-Way Match<br/><small>Invoice ↔ PO ↔ GRN</small>"]
-        Tolerance["Tolerance<br/>Evaluation"]
-    end
-
-    %% ── EXCEPTION HANDLING ────────────────────────────────────
-    subgraph Exceptions["⚠️ Exception Queue"]
-        direction TB
-        ExTypes["12 Exception Types<br/><small>missing PO · amount variance<br/>duplicate · vendor on hold<br/>tax variance · expired PO …</small>"]
-        AIAnalysis["🤖 AI Analysis<br/><small>Severity · Resolution guidance</small>"]
+        ExTypes["12 Exception Types"]
+        AIAnalysis["AI Severity Analysis"]
         ExTypes --> AIAnalysis
     end
 
-    subgraph Resolution["🔧 AI Resolution Engine"]
+    subgraph ResolutionEngine["AI Resolution Engine"]
         direction TB
-        Playbook["Playbook Selection<br/><small>13 type-specific playbooks</small>"]
-        Plan["Resolution Plan<br/><small>Structured action steps</small>"]
-        AutoExec["Auto-Execute<br/><small>100+ action handlers</small>"]
-        HumanGate{"Human<br/>Approval?"}
-        Playbook --> Plan --> AutoExec --> HumanGate
+        Playbook["13 Playbooks"]
+        ResPlan["Resolution Plan"]
+        AutoExec["100+ Action Handlers"]
+        HumanGate{"Needs Human?"}
+        Playbook --> ResPlan --> AutoExec --> HumanGate
     end
 
-    subgraph AutoRes["⚡ Auto-Resolution"]
-        direction TB
-        ToleranceCheck["Within Tolerance?"]
-        AutoResolve["Auto-Resolve<br/><small>tolerance_applied</small>"]
+    subgraph AutoResolution["Auto-Resolution"]
+        TolCheck["Within Tolerance"]
+        AutoResolve["Auto-Resolve"]
+        TolCheck --> AutoResolve
     end
 
-    %% ── APPROVAL ──────────────────────────────────────────────
-    subgraph Approval["✅ Approval Workflow"]
+    subgraph ApprovalWF["Approval Workflow"]
         direction TB
-        AIRisk["🤖 AI Risk Assessment<br/><small>approve · reject · review</small>"]
-        Matrix["Approval Matrix<br/><small>Role-based routing</small>"]
+        AIRisk["AI Risk Assessment"]
+        Matrix["Approval Matrix"]
         Decision{"Decision"}
         AIRisk --> Matrix --> Decision
     end
 
-    %% ── OUTPUT ────────────────────────────────────────────────
-    subgraph Output["📊 Output"]
-        direction LR
-        Posted["✅ Posted<br/>to ERP"]
-        Dashboard["KPI<br/>Dashboard"]
-        Analytics["Analytics<br/>& Reports"]
-        AuditTrail["Audit<br/>Trail"]
+    subgraph Output["Output"]
+        Posted["Posted to ERP"]
+        Dashboard["KPI Dashboard"]
+        Analytics["Analytics + Reports"]
+        Audit["Audit Trail"]
     end
 
-    %% ── SUPPORTING ────────────────────────────────────────────
-    subgraph Support["💬 AI Assistant"]
-        Chat["Chat Panel<br/><small>Real-time system queries<br/>Exception guidance<br/>AP domain expertise</small>"]
+    subgraph BGTasks["Background Tasks - Celery"]
+        BatchMatch["Batch Matching"]
+        AutoResScan["Auto-Resolution Scan"]
+        DupScan["Duplicate Scan"]
     end
 
-    subgraph Background["🔄 Background Tasks"]
-        direction LR
-        BatchMatch["Batch<br/>Matching"]
-        AutoResScan["Auto-Resolution<br/>Scan"]
-        DupScan["Duplicate<br/>Scan"]
-    end
+    ChatPanel["AI Chat Assistant"]
 
-    %% ── CONNECTIONS ───────────────────────────────────────────
-    Ingestion --> OCR
-    OCR --> Intelligence
-    Intelligence --> Pipeline
+    Ingestion --> Extraction --> Classification --> CorePipeline
+    MatchEng --> MatchResult
+    MatchEng -.-> MatchDetail
 
-    Match -.-> MatchEngine
+    MatchResult -->|"Matched"| ApprovalWF
+    MatchResult -->|"Variance"| ExceptionQueue
+    MatchResult -->|"Near Tolerance"| AutoResolution
 
-    MatchResult -->|"✅ Matched"| Approval
-    MatchResult -->|"❌ Variance"| Exceptions
-    MatchResult -->|"≈ Near tolerance"| AutoRes
+    AutoResolution -->|"Resolved"| ApprovalWF
+    AutoResolution -->|"Exceeds"| ExceptionQueue
 
-    AutoRes -->|"resolved"| Approval
-    AutoRes -->|"exceeds"| Exceptions
-
-    Exceptions --> Resolution
-    HumanGate -->|"Yes — needs review"| Exceptions
-    HumanGate -->|"No — auto-resolved"| Approval
+    ExceptionQueue --> ResolutionEngine
+    HumanGate -->|"Yes"| ExceptionQueue
+    HumanGate -->|"No"| ApprovalWF
 
     Decision -->|"Approved"| Output
-    Decision -->|"Rejected"| Exceptions
+    Decision -->|"Rejected"| ExceptionQueue
 
-    Background -.-> Pipeline
-    Support -.-> Output
+    BGTasks -.-> CorePipeline
+    ChatPanel -.-> Output
 
-    %% ── STYLES ────────────────────────────────────────────────
     style Ingestion fill:#e8f4fd,stroke:#2196F3,color:#0d47a1
-    style OCR fill:#fff3e0,stroke:#ff9800,color:#e65100
-    style Intelligence fill:#fff3e0,stroke:#ff9800,color:#e65100
-    style Pipeline fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
-    style MatchEngine fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
-    style Exceptions fill:#ffebee,stroke:#f44336,color:#b71c1c
-    style Resolution fill:#ffebee,stroke:#f44336,color:#b71c1c
-    style AutoRes fill:#fff8e1,stroke:#ffc107,color:#f57f17
-    style Approval fill:#e8f5e9,stroke:#4caf50,color:#1b5e20
+    style Extraction fill:#fff3e0,stroke:#ff9800,color:#e65100
+    style Classification fill:#fff3e0,stroke:#ff9800,color:#e65100
+    style CorePipeline fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
+    style MatchDetail fill:#f3e5f5,stroke:#9c27b0,color:#4a148c
+    style ExceptionQueue fill:#ffebee,stroke:#f44336,color:#b71c1c
+    style ResolutionEngine fill:#ffebee,stroke:#f44336,color:#b71c1c
+    style AutoResolution fill:#fff8e1,stroke:#ffc107,color:#f57f17
+    style ApprovalWF fill:#e8f5e9,stroke:#4caf50,color:#1b5e20
     style Output fill:#e0f2f1,stroke:#009688,color:#004d40
-    style Support fill:#ede7f6,stroke:#673ab7,color:#311b92
-    style Background fill:#eceff1,stroke:#607d8b,color:#263238
-    style MatchResult fill:#ce93d8,stroke:#9c27b0,color:#fff
-    style Decision fill:#a5d6a7,stroke:#4caf50,color:#1b5e20
-    style HumanGate fill:#ef9a9a,stroke:#f44336,color:#b71c1c
+    style BGTasks fill:#eceff1,stroke:#607d8b,color:#263238
 ```
 
 ## Key Features
