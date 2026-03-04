@@ -24,16 +24,17 @@ def list_pending(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List pending approval tasks for the current user."""
-    tasks = (
-        db.query(ApprovalTask)
-        .filter(
-            ApprovalTask.approver_id == current_user.id,
-            ApprovalTask.status == ApprovalStatus.pending,
-        )
-        .order_by(ApprovalTask.created_at.asc())
-        .all()
+    """List pending approval tasks. Admins see all; others see only their own."""
+    from app.models.user import UserRole
+
+    query = db.query(ApprovalTask).filter(
+        ApprovalTask.status == ApprovalStatus.pending,
     )
+    # Admins and approvers see all pending tasks; others only their own
+    if current_user.role not in (UserRole.admin, UserRole.approver):
+        query = query.filter(ApprovalTask.approver_id == current_user.id)
+
+    tasks = query.order_by(ApprovalTask.created_at.asc()).all()
     return tasks
 
 
