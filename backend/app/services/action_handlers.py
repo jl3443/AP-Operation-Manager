@@ -45,6 +45,43 @@ def get_handler(action_type: str) -> HandlerFn | None:
     return _HANDLERS.get(action_type)
 
 
+def run_handler_safe(db: Session, action) -> tuple[dict[str, Any] | None, str | None]:
+    """Execute the handler for *action* with full error isolation.
+
+    Returns ``(result_dict, None)`` on success or ``(None, error_str)`` on failure.
+    If the action_type has no registered handler a generic fallback is used so
+    execution never fails due to a missing handler.
+    """
+    handler = get_handler(action.action_type)
+    if handler is None:
+        # Generic fallback — record what was requested so the user can see it
+        return _fallback_handler(db, action), None
+
+    try:
+        result = handler(db, action)
+        return result, None
+    except Exception as exc:
+        logger.exception("Handler %s raised: %s", action.action_type, exc)
+        return None, f"{action.action_type} error: {exc}"
+
+
+def _fallback_handler(db: Session, action) -> dict[str, Any]:
+    """Best-effort handler for action types with no dedicated implementation."""
+    logger.info(
+        "No handler for %s — using generic fallback (step %s)",
+        action.action_type,
+        action.step_id,
+    )
+    return {
+        "action_type": action.action_type,
+        "status": "completed_via_fallback",
+        "params_received": action.params_json or {},
+        "expected_result": action.expected_result or "N/A",
+        "note": f"No dedicated handler for '{action.action_type}'. "
+                "Step recorded; manual follow-up may be needed.",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -623,3 +660,285 @@ def handle_recalc_lines(db: Session, action: AutomationAction) -> dict:
             "match": abs(computed - current) < 0.01,
         })
     return {"lines": recalculated}
+
+
+# ---------------------------------------------------------------------------
+# NEW: Additional robust handlers
+# ---------------------------------------------------------------------------
+
+@register("COMPARE_LINE_ITEMS")
+def handle_compare_line_items(db: Session, action: AutomationAction) -> dict:
+    """Detailed line-by-line comparison between invoice and PO."""
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not inv:
+        return {"error": "Invoice not found", "comparisons": []}
+
+    # Gather PO lines via linked line items
+    po_lines_map: dict[str, Any] = {}
+    for li in inv.line_items:
+        if li.po_line_id:
+            po_line = db.query(POLineItem).filter(POLineItem.id == li.po_line_id).first()
+            if po_line:
+                po_lines_map[str(li.id)] = po_line
+
+    comparisons = []
+    total_inv = 0.0
+    total_po = 0.0
+    mismatches = 0
+
+    for li in inv.line_items:
+        inv_total = round(float(li.line_total), 2)
+        total_inv += inv_total
+        row: dict[str, Any] = {
+            "line_number": li.line_number,
+            "description": li.description,
+            "inv_qty": float(li.quantity),
+            "inv_unit_price": float(li.unit_price),
+            "inv_total": inv_total,
+        }
+
+        po_line = po_lines_map.get(str(li.id))
+        if po_line:
+            po_total = round(float(po_line.line_total), 2)
+            total_po += po_total
+            qty_diff = float(li.quantity) - float(po_line.quantity_ordered)
+            price_diff = round(float(li.unit_price) - float(po_line.unit_price), 4)
+            total_diff = round(inv_total - po_total, 2)
+            row.update({
+                "po_qty": float(po_line.quantity_ordered),
+                "po_unit_price": float(po_line.unit_price),
+                "po_total": po_total,
+                "qty_diff": qty_diff,
+                "price_diff": price_diff,
+                "total_diff": total_diff,
+                "match": abs(total_diff) < 0.01,
+            })
+            if abs(total_diff) >= 0.01:
+                mismatches += 1
+        else:
+            row.update({"po_qty": None, "po_unit_price": None, "po_total": None, "match": False, "note": "No PO line linked"})
+            mismatches += 1
+
+        comparisons.append(row)
+
+    return {
+        "comparisons": comparisons,
+        "total_invoice": round(total_inv, 2),
+        "total_po": round(total_po, 2),
+        "total_diff": round(total_inv - total_po, 2),
+        "lines_matched": len(comparisons) - mismatches,
+        "lines_mismatched": mismatches,
+    }
+
+
+@register("CHECK_TOLERANCE")
+def handle_check_tolerance(db: Session, action: AutomationAction) -> dict:
+    """Look up tolerance configuration and evaluate if variance is within bounds."""
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not inv:
+        return {"error": "Invoice not found"}
+
+    tol = (
+        db.query(ToleranceConfig)
+        .filter(ToleranceConfig.is_active == True)
+        .first()
+    )
+    if not tol:
+        return {"has_tolerance": False, "note": "No active tolerance config"}
+
+    # Find match result for variance data
+    match = db.query(MatchResult).filter(
+        MatchResult.invoice_id == inv.id
+    ).order_by(MatchResult.created_at.desc()).first()
+
+    inv_total = float(inv.total_amount)
+    result: dict[str, Any] = {
+        "has_tolerance": True,
+        "amount_tolerance_pct": float(tol.amount_tolerance_pct),
+        "amount_tolerance_abs": float(tol.amount_tolerance_abs),
+        "quantity_tolerance_pct": float(tol.quantity_tolerance_pct),
+        "invoice_total": inv_total,
+    }
+
+    if match and match.matched_po_id:
+        po_lines = db.query(POLineItem).filter(POLineItem.po_id == match.matched_po_id).all()
+        po_total = sum(float(pl.line_total) for pl in po_lines)
+        variance_abs = abs(inv_total - po_total)
+        variance_pct = (variance_abs / po_total * 100) if po_total > 0 else 0
+        result.update({
+            "po_total": po_total,
+            "variance_abs": round(variance_abs, 2),
+            "variance_pct": round(variance_pct, 2),
+            "within_pct_tolerance": variance_pct <= float(tol.amount_tolerance_pct),
+            "within_abs_tolerance": variance_abs <= float(tol.amount_tolerance_abs),
+            "within_any_tolerance": (
+                variance_pct <= float(tol.amount_tolerance_pct)
+                or variance_abs <= float(tol.amount_tolerance_abs)
+            ),
+        })
+
+    return result
+
+
+@register("SUMMARIZE_FINDINGS")
+def handle_summarize_findings(db: Session, action: AutomationAction) -> dict:
+    """AI-generated summary of all prior steps' findings in the plan."""
+    from app.models.resolution import ResolutionPlan
+
+    plan = db.query(ResolutionPlan).options(
+        joinedload(ResolutionPlan.actions)
+    ).filter(ResolutionPlan.id == action.plan_id).first()
+    if not plan:
+        return {"summary": "No plan found."}
+
+    # Collect results from completed steps
+    completed_results = []
+    for a in sorted(plan.actions, key=lambda x: x.step_id or ""):
+        if a.id == action.id:
+            continue  # skip self
+        if a.result_json:
+            completed_results.append(f"[{a.step_id}] {a.action_type}: {str(a.result_json)[:300]}")
+
+    if not completed_results:
+        return {"summary": "No completed steps to summarize."}
+
+    prompt = (
+        f"Summarize these resolution findings for exception type '{plan.plan_json.get('exception_type', 'unknown')}':\n\n"
+        + "\n".join(completed_results)
+        + "\n\nProvide a 2-4 sentence executive summary for an AP analyst."
+    )
+    summary = ai_service.call_claude(
+        system_prompt="You summarize AP exception resolution findings concisely for finance analysts.",
+        user_message=prompt,
+        max_tokens=512,
+    ) or "Resolution steps completed. Review individual step results for details."
+
+    return {"summary": summary, "steps_reviewed": len(completed_results)}
+
+
+@register("ESCALATE_TO_MANAGER")
+def handle_escalate_to_manager(db: Session, action: AutomationAction) -> dict:
+    """Escalate exception to AP manager with context."""
+    from app.models.user import User, UserRole
+
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not exc:
+        return {"error": "Exception not found"}
+
+    exc.status = ExceptionStatus.escalated
+    params = action.params_json or {}
+
+    # Find an approver/admin user to assign to
+    manager = db.query(User).filter(
+        User.role.in_([UserRole.approver, UserRole.admin]),
+        User.is_active == True,
+    ).first()
+
+    if manager:
+        exc.assigned_to = manager.id
+
+    db.commit()
+    return {
+        "escalated": True,
+        "assigned_to": manager.name if manager else "Unassigned",
+        "reason": params.get("reason", "Requires management review"),
+        "exception_id": str(exc.id),
+    }
+
+
+@register("AUTO_LINK_PO")
+def handle_auto_link_po(db: Session, action: AutomationAction) -> dict:
+    """Attempt to auto-link invoice line items to PO lines."""
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not inv:
+        return {"error": "Invoice not found"}
+
+    from app.services.match_service import auto_link_po_lines
+    result = auto_link_po_lines(db, inv.id)
+    db.refresh(inv)
+
+    linked = sum(1 for li in inv.line_items if li.po_line_id)
+    return {
+        "total_lines": len(inv.line_items),
+        "lines_linked": linked,
+        "lines_unlinked": len(inv.line_items) - linked,
+        "link_result": result,
+    }
+
+
+@register("VERIFY_VENDOR_DETAILS")
+def handle_verify_vendor_details(db: Session, action: AutomationAction) -> dict:
+    """Cross-check vendor details between invoice and vendor master."""
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not inv:
+        return {"error": "Invoice not found"}
+
+    vendor = db.query(Vendor).filter(Vendor.id == inv.vendor_id).first() if inv.vendor_id else None
+    if not vendor:
+        return {
+            "verified": False,
+            "vendor_in_master": False,
+            "note": "No vendor linked to invoice",
+        }
+
+    return {
+        "verified": True,
+        "vendor_in_master": True,
+        "vendor_name": vendor.name,
+        "vendor_code": vendor.vendor_code,
+        "vendor_status": vendor.status.value,
+        "risk_level": vendor.risk_level.value,
+        "payment_terms": vendor.payment_terms_code or "N/A",
+        "on_hold": vendor.status.value == "on_hold",
+        "is_active": vendor.status.value == "active",
+    }
+
+
+@register("CALCULATE_VARIANCE_BREAKDOWN")
+def handle_variance_breakdown(db: Session, action: AutomationAction) -> dict:
+    """Produce a structured breakdown of the total variance by category."""
+    exc, inv = _get_exception_and_invoice(db, action)
+    if not inv:
+        return {"error": "Invoice not found"}
+
+    inv_subtotal = sum(float(li.line_total) for li in inv.line_items)
+    inv_tax = float(inv.tax_amount)
+    inv_freight = float(inv.freight_amount)
+    inv_discount = float(inv.discount_amount)
+    inv_total = float(inv.total_amount)
+
+    # Try to get PO total for comparison
+    match = db.query(MatchResult).filter(
+        MatchResult.invoice_id == inv.id
+    ).order_by(MatchResult.created_at.desc()).first()
+
+    po_total = 0.0
+    po_subtotal = 0.0
+    if match and match.matched_po_id:
+        po_lines = db.query(POLineItem).filter(POLineItem.po_id == match.matched_po_id).all()
+        po_subtotal = sum(float(pl.line_total) for pl in po_lines)
+        po_total = po_subtotal  # POs typically don't include tax/freight
+
+    breakdown = {
+        "invoice": {
+            "subtotal": round(inv_subtotal, 2),
+            "tax": round(inv_tax, 2),
+            "freight": round(inv_freight, 2),
+            "discount": round(inv_discount, 2),
+            "total": round(inv_total, 2),
+        },
+        "po": {
+            "subtotal": round(po_subtotal, 2),
+            "total": round(po_total, 2),
+        },
+        "variances": {
+            "subtotal_diff": round(inv_subtotal - po_subtotal, 2),
+            "tax_component": round(inv_tax, 2),
+            "freight_component": round(inv_freight, 2),
+            "discount_component": round(-inv_discount, 2),
+            "total_diff": round(inv_total - po_total, 2),
+        },
+        "computed_total": round(inv_subtotal + inv_tax + inv_freight - inv_discount, 2),
+        "total_matches_computed": abs(inv_total - (inv_subtotal + inv_tax + inv_freight - inv_discount)) < 0.01,
+    }
+    return breakdown

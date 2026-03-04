@@ -59,50 +59,57 @@ Return ONLY a JSON object (no markdown, no code fences):
   ]
 }
 
-AVAILABLE ACTION TYPES:
+AVAILABLE ACTION TYPES (use ONLY these):
+- GENERATE_EXPLANATION: Generate human-readable variance explanation (good first step)
+- COMPARE_LINE_ITEMS: Detailed line-by-line comparison between invoice and PO
+- CHECK_TOLERANCE: Look up tolerance config and evaluate if variance is within bounds
+- CALCULATE_VARIANCE_BREAKDOWN: Structured breakdown of variance by category (subtotal, tax, freight, discount)
+- RECALCULATE_INVOICE_TOTAL: Recompute total from line items
+- RECALC_LINE_TOTALS: Recalculate line totals from qty * unit_price
+- RECALC_TAX: Deterministic tax recalculation
 - SEARCH_PO_CANDIDATES: Find POs by vendor, amount, date range
-- DRAFT_VENDOR_EMAIL: Generate email draft (subject, body) for vendor communication
-- DRAFT_INTERNAL_MESSAGE: Generate message for internal team (warehouse, procurement, finance)
+- AUTO_LINK_PO: Attempt to auto-link invoice line items to PO lines
+- CHECK_GRN_STATUS: Query GRN records for PO
+- VERIFY_VENDOR_DETAILS: Cross-check vendor details between invoice and vendor master
 - SUGGEST_VENDOR_ALIAS: Suggest vendor alias mapping from invoice text
 - LINK_INVOICE_VENDOR: Link invoice to a specific vendor_id
-- RECALCULATE_INVOICE_TOTAL: Recompute total from line items
-- RECALC_LINE_TOTALS: Recalculate line totals after adjustments
-- RECALC_TAX: Deterministic tax recalculation
-- NORMALIZE_UOM: Unit-of-measure conversion (e.g., box=10ea)
+- CHECK_VENDOR_COMPLIANCE: Check vendor status and compliance docs
 - FIND_POSSIBLE_DUPLICATES: Find duplicate invoices
 - LOCK_INVOICE_FOR_PAYMENT: Prevent invoice from entering payment
-- CHECK_GRN_STATUS: Query GRN records for PO
+- DRAFT_VENDOR_EMAIL: Generate email draft for vendor communication (requires_human_approval=true)
+- DRAFT_INTERNAL_MESSAGE: Generate message for internal team
 - CREATE_HUMAN_TASK: Create task for a team (warehouse/procurement/finance)
-- CREATE_WAIT_TIMER: Set timeout for expected event
 - REASSIGN_EXCEPTION: Route exception to different queue/user
+- ESCALATE_TO_MANAGER: Escalate exception to AP manager
 - LOOKUP_POLICY_RULES: Query policy rules for vendor/category
-- PROPOSE_AUTO_RESOLVE: Mark exception as auto-resolvable
+- PROPOSE_AUTO_RESOLVE: Evaluate if exception can be auto-resolved via tolerance
 - CLOSE_EXCEPTION: Resolve exception and advance invoice
 - PROCEED_TO_APPROVAL: Move invoice to approval workflow
 - FETCH_FX_RATE: Look up exchange rate
 - CONVERT_AMOUNTS: Normalize amounts to base currency
+- NORMALIZE_UOM: Unit-of-measure conversion (e.g., box=10ea)
 - RERUN_OCR: Re-extract invoice from PDF
 - RERUN_MATCH: Trigger 2-way or 3-way matching
-- GENERATE_EXPLANATION: Generate human-readable variance explanation
-- PATCH_INVOICE_FIELDS: Update specific invoice fields
+- PATCH_INVOICE_FIELDS: Update specific invoice fields (requires_human_approval=true)
 - PROPOSE_TERMS_OVERRIDE: Suggest payment terms correction
-- CHECK_VENDOR_COMPLIANCE: Check vendor status and compliance docs
+- CREATE_WAIT_TIMER: Set timeout for expected event
 - WAIT_FOR_REPLY: Pause execution until manual trigger
+- SUMMARIZE_FINDINGS: AI summary of all completed steps (use as final step)
 
 PLAYBOOK GUIDELINES BY EXCEPTION TYPE:
 
-1. missing_po: Search PO candidates → if found, create human task to link; if not, draft vendor email → rerun match
-2. amount_variance (within tolerance): Generate explanation → propose auto-resolve → close exception
-3. amount_variance (outside tolerance): Recalculate total → explain → draft vendor email or create PO amendment task → rerun match
-4. contract_price_variance: Diagnose (discount/UOM/error) → normalize UOM or draft clarification email → rerun match
-5. quantity_variance: Check GRN status → draft internal message to warehouse or hold invoice → rerun match on GRN update
-6. vendor_mismatch: Suggest vendor alias → human confirms → link vendor → rerun match
-7. duplicate_invoice: Find duplicates → lock for payment → create review task → optionally draft credit memo email
-8. tax_variance: Recalculate tax deterministically → generate explanation → draft vendor email or auto-resolve → rerun match
-9. currency_variance: Fetch FX rate → convert amounts → rerun match; or draft email to reissue in PO currency
-10. partial_delivery_overrun: Create wait timer → draft internal message to warehouse → rerun match on GRN creation
-11. expired_po: Lookup policy rules → propose terms override or create PO reopen task → draft vendor email
-12. vendor_on_hold: Check vendor compliance → draft vendor email for missing docs → reassign to vendor enablement
+1. missing_po: Search PO candidates → Auto-link PO (if found) → Compare line items → Draft vendor email (if not found) → Rerun match
+2. amount_variance (within tolerance): Compare line items → Check tolerance → Generate explanation → Propose auto-resolve → Close exception
+3. amount_variance (outside tolerance): Compare line items → Calculate variance breakdown → Recalculate total → Draft vendor email → Rerun match
+4. contract_price_variance: Compare line items → Calculate variance breakdown → Normalize UOM or draft clarification email → Rerun match
+5. quantity_variance: Check GRN status → Compare line items → Draft internal message to warehouse → Rerun match
+6. vendor_mismatch: Verify vendor details → Suggest vendor alias → human confirms → Link vendor → Rerun match
+7. duplicate_invoice: Find duplicates → Lock for payment → Create review task → Draft credit memo email
+8. tax_variance: Recalc tax → Calculate variance breakdown → Generate explanation → Check tolerance → Draft vendor email or auto-resolve
+9. currency_variance: Fetch FX rate → Convert amounts → Compare line items → Rerun match
+10. partial_delivery_overrun: Check GRN status → Compare line items → Draft internal message → Create wait timer
+11. expired_po: Lookup policy rules → Propose terms override → Draft vendor email → Escalate to manager
+12. vendor_on_hold: Check vendor compliance → Verify vendor details → Draft vendor email → Reassign to vendor enablement
 
 RULES:
 - Use the minimum number of steps needed

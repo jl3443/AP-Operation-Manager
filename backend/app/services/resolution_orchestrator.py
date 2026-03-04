@@ -20,7 +20,7 @@ from app.models.resolution import (
     ResolutionPlan,
 )
 from app.services import audit_service
-from app.services.action_handlers import get_handler
+from app.services.action_handlers import get_handler, run_handler_safe
 from app.services.ai_exception_resolver import generate_resolution_plan
 
 logger = logging.getLogger(__name__)
@@ -89,64 +89,51 @@ def execute(db: Session, plan_id: uuid.UUID) -> dict:
                 })
                 break
 
-        # Execute the action
-        handler = get_handler(action.action_type)
-        if not handler:
-            action.status = ActionStatus.failed
-            action.error_message = f"No handler for action type: {action.action_type}"
-            db.commit()
-            executed.append({
-                "step_id": action.step_id,
-                "action_type": action.action_type,
-                "status": "failed",
-                "error": action.error_message,
-            })
-            continue
-
+        # Execute the action via safe wrapper (handles missing handlers + exceptions)
         action.status = ActionStatus.running
         db.commit()
 
-        try:
-            result = handler(db, action)
-            action.status = ActionStatus.done
-            action.result_json = result
-            action.executed_at = datetime.now(timezone.utc)
-            db.commit()
+        result, error = run_handler_safe(db, action)
 
-            # Audit log
-            audit_service.log_action(
-                db,
-                entity_type="automation_action",
-                entity_id=action.id,
-                action="action_executed",
-                actor_type=ActorType.system,
-                actor_name="Resolution Orchestrator",
-                evidence={
-                    "action_type": action.action_type,
-                    "step_id": action.step_id,
-                    "result_summary": str(result)[:500],
-                },
-            )
-            db.commit()
-
-            executed.append({
-                "step_id": action.step_id,
-                "action_type": action.action_type,
-                "status": "done",
-                "result": result,
-            })
-
-        except Exception as e:
-            logger.exception("Action %s failed: %s", action.action_type, e)
+        if error:
+            logger.warning("Action %s (%s) failed: %s", action.step_id, action.action_type, error)
             action.status = ActionStatus.failed
-            action.error_message = str(e)
+            action.error_message = error
             db.commit()
             executed.append({
                 "step_id": action.step_id,
                 "action_type": action.action_type,
                 "status": "failed",
-                "error": str(e),
+                "error": error,
             })
+            continue
+
+        action.status = ActionStatus.done
+        action.result_json = result
+        action.executed_at = datetime.now(timezone.utc)
+        db.commit()
+
+        audit_service.log_action(
+            db,
+            entity_type="automation_action",
+            entity_id=action.id,
+            action="action_executed",
+            actor_type=ActorType.system,
+            actor_name="Resolution Orchestrator",
+            evidence={
+                "action_type": action.action_type,
+                "step_id": action.step_id,
+                "result_summary": str(result)[:500],
+            },
+        )
+        db.commit()
+
+        executed.append({
+            "step_id": action.step_id,
+            "action_type": action.action_type,
+            "status": "done",
+            "result": result,
+        })
 
     # Update plan status
     all_done = all(a.status in (ActionStatus.done, ActionStatus.skipped) for a in actions)

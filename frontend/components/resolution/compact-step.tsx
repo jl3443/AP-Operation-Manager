@@ -16,28 +16,40 @@ import type { AutomationAction } from "@/lib/types"
 
 const ACTION_LABELS: Record<string, string> = {
   GENERATE_EXPLANATION: "Generate Variance Explanation",
-  DRAFT_VENDOR_EMAIL: "Draft Email to Vendor",
-  DRAFT_INTERNAL_MESSAGE: "Draft Internal Message",
-  CHECK_GRN_STATUS: "Check Goods Receipt Status",
-  SEARCH_PO_CANDIDATES: "Search for Matching POs",
-  RERUN_MATCH: "Re-run Invoice Matching",
-  LOCK_INVOICE_FOR_PAYMENT: "Lock Invoice (Prevent Payment)",
-  CREATE_HUMAN_TASK: "Create Task for Team",
-  CREATE_WAIT_TIMER: "Set Follow-up Timer",
-  CLOSE_EXCEPTION: "Close Exception",
-  PROCEED_TO_APPROVAL: "Move to Approval",
-  FIND_POSSIBLE_DUPLICATES: "Check for Duplicates",
+  COMPARE_LINE_ITEMS: "Compare Invoice vs PO Lines",
+  CHECK_TOLERANCE: "Check Tolerance Configuration",
+  CALCULATE_VARIANCE_BREAKDOWN: "Breakdown Variance by Category",
   RECALCULATE_INVOICE_TOTAL: "Recalculate Invoice Total",
-  NORMALIZE_UOM: "Normalize Unit of Measure",
+  RECALC_LINE_TOTALS: "Recalculate Line Totals",
+  RECALC_TAX: "Recalculate Tax",
+  SEARCH_PO_CANDIDATES: "Search for Matching POs",
+  AUTO_LINK_PO: "Auto-Link PO Lines",
+  CHECK_GRN_STATUS: "Check Goods Receipt Status",
+  VERIFY_VENDOR_DETAILS: "Verify Vendor Details",
   SUGGEST_VENDOR_ALIAS: "Suggest Vendor Alias",
   LINK_INVOICE_VENDOR: "Link Invoice to Vendor",
-  PROPOSE_AUTO_RESOLVE: "Propose Auto-Resolution",
+  CHECK_VENDOR_COMPLIANCE: "Check Vendor Compliance",
+  FIND_POSSIBLE_DUPLICATES: "Check for Duplicates",
+  LOCK_INVOICE_FOR_PAYMENT: "Lock Invoice (Prevent Payment)",
+  DRAFT_VENDOR_EMAIL: "Draft Email to Vendor",
+  DRAFT_INTERNAL_MESSAGE: "Draft Internal Message",
+  CREATE_HUMAN_TASK: "Create Task for Team",
   REASSIGN_EXCEPTION: "Reassign Exception",
+  ESCALATE_TO_MANAGER: "Escalate to Manager",
+  LOOKUP_POLICY_RULES: "Look Up Policy Rules",
+  PROPOSE_AUTO_RESOLVE: "Propose Auto-Resolution",
+  CLOSE_EXCEPTION: "Close Exception",
+  PROCEED_TO_APPROVAL: "Move to Approval",
   FETCH_FX_RATE: "Fetch Exchange Rate",
   CONVERT_AMOUNTS: "Convert Currency Amounts",
-  RECALC_TAX: "Recalculate Tax",
+  NORMALIZE_UOM: "Normalize Unit of Measure",
+  RERUN_OCR: "Re-Extract from PDF",
+  RERUN_MATCH: "Re-run Invoice Matching",
   PATCH_INVOICE_FIELDS: "Update Invoice Fields",
-  CHECK_VENDOR_COMPLIANCE: "Check Vendor Compliance",
+  PROPOSE_TERMS_OVERRIDE: "Propose Payment Terms Fix",
+  CREATE_WAIT_TIMER: "Set Follow-up Timer",
+  WAIT_FOR_REPLY: "Waiting for Reply",
+  SUMMARIZE_FINDINGS: "Summarize Findings",
 }
 
 export function friendlyActionType(type: string): string {
@@ -47,12 +59,30 @@ export function friendlyActionType(type: string): string {
 export function summarizeResult(action: AutomationAction): string | null {
   const r = action.result_json
   if (!r) return null
+  if (r.error) return `Error: ${r.error}`
   if (r.subject && r.body) return `Email draft ready: "${r.subject}"`
-  if (r.explanation) return String(r.explanation)
-  if (r.summary) return String(r.summary)
-  if (r.grn_status) return `GRN status: ${r.grn_status}`
+  if (r.explanation) return String(r.explanation).slice(0, 200)
+  if (r.summary) return String(r.summary).slice(0, 200)
+  if (r.comparisons) return `${r.lines_matched} lines match, ${r.lines_mismatched} mismatch (diff: $${r.total_diff})`
+  if (r.within_any_tolerance != null) return r.within_any_tolerance ? `Within tolerance (${r.variance_pct}%)` : `Exceeds tolerance (${r.variance_pct}%)`
+  if (r.variances) { const v = r.variances as Record<string, number>; return `Subtotal diff: $${v.subtotal_diff}, Tax: $${v.tax_component}` }
+  if (r.computed_total != null && r.current_total != null) return `Computed: $${r.computed_total} vs Current: $${r.current_total} (diff: $${r.difference})`
+  if (r.lines) return `${(r.lines as unknown[]).length} lines recalculated`
+  if (r.candidates) return `${(r.candidates as unknown[]).length} PO candidates found`
+  if (r.lines_linked != null) return `${r.lines_linked}/${r.total_lines} lines linked to PO`
+  if (r.grn_found != null) return r.grn_found ? `${(r.grn_records as unknown[])?.length} GRN records found` : "No GRN records"
+  if (r.vendor_name && r.vendor_status) return `${r.vendor_name} (${r.vendor_status}, risk: ${r.risk_level})`
+  if (r.is_duplicate != null) return r.is_duplicate ? `Possible duplicate (${Number(r.confidence) * 100}%)` : "No duplicates found"
+  if (r.can_auto_resolve != null) return r.can_auto_resolve ? `Can auto-resolve: ${r.reason}` : `Manual needed: ${r.reason}`
+  if (r.match_status) return `Match: ${r.match_status} (score: ${r.overall_score}%)`
+  if (r.escalated) return `Escalated to ${r.assigned_to}`
+  if (r.locked) return "Invoice locked for payment"
+  if (r.task_created) return `Task created: ${r.description}`
+  if (r.reassigned) return `Reassigned to ${r.queue}`
+  if (r.patched) return `Fields updated: ${Object.keys(r.patched).join(", ")}`
   if (r.message) return String(r.message)
   if (r.status) return `Status: ${r.status}`
+  if (r.note) return String(r.note)
   return null
 }
 
