@@ -87,6 +87,7 @@ export async function apiPost<T>(
     method: "POST",
     headers: getHeaders(),
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(45_000),
   })
 
   return handleResponse<T>(response)
@@ -212,6 +213,24 @@ export async function apiPostStream(
       // Skip
     }
   }
+}
+
+/**
+ * POST directly to backend (bypasses Next.js rewrite proxy).
+ * Use for slow endpoints like email sending where the proxy may time out.
+ */
+export async function apiPostDirect<T>(
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const response = await fetch(`${STREAM_BASE_URL}${path}`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(45_000),
+  })
+
+  return handleResponse<T>(response)
 }
 
 export { ApiClientError }

@@ -44,11 +44,17 @@ exceptions, approvals, vendor management
   amounts, dates, PO references, and vendor information from uploaded PDFs
 - Compare invoice line items against PO line items and GRN receipts
 
-Keep answers concise and actionable. Use bullet points for lists. \
-When referencing amounts, always include the currency. \
-When asked about uploaded data or datasets, refer to the PO, GRN, and \
+RESPONSE FORMAT RULES (strict):
+- Keep every response under 150 words. Never exceed this.
+- Use short bullet points, not tables or long paragraphs.
+- No markdown headers (##), no horizontal rules (---), no tables (|---|).
+- Lead with the direct answer, then add 3-5 key bullet points max.
+- For lists of items (invoices, exceptions, vendors), show only the top 3-5 \
+most relevant, not every record. Say "and X more" for the rest.
+- When referencing amounts, always include the currency.
+- When asked about uploaded data or datasets, refer to the PO, GRN, and \
 vendor data provided below — this IS the uploaded data.
-When asked about a specific invoice, use the detailed invoice data including \
+- When asked about a specific invoice, use the detailed invoice data including \
 line items, OCR confidence, and file paths provided in the context."""
 
 # Maximum messages stored per conversation
@@ -312,7 +318,7 @@ def chat(
     raw = ai_service.call_claude_conversation(
         system_prompt=system,
         messages=history,
-        max_tokens=2048,
+        max_tokens=800,
     )
 
     response_text = raw or "I'm sorry, I wasn't able to process that request. Please try again."

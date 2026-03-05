@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
+  Legend,
 } from "recharts"
 import { Printer } from "lucide-react"
 
@@ -60,8 +61,8 @@ const riskColors: Record<string, string> = {
 // -- Chart configs --
 
 const agingConfig = {
-  count: { label: "Invoices" },
-  amount: { label: "Amount" },
+  count: { label: "Invoices", color: "oklch(0.55 0.15 255)" },
+  amount: { label: "Amount ($)", color: "oklch(0.55 0.15 30)" },
 } satisfies ChartConfig
 
 const exceptionConfig = {
@@ -70,6 +71,7 @@ const exceptionConfig = {
 
 const monthlyConfig = {
   invoice_count: { label: "Invoice Count", color: "oklch(0.55 0.15 255)" },
+  total_amount: { label: "Amount ($)", color: "oklch(0.55 0.15 145)" },
 } satisfies ChartConfig
 
 const riskConfig = {
@@ -196,9 +198,12 @@ export default function AnalyticsPage() {
                       axisLine={false}
                       fontSize={11}
                     />
-                    <YAxis tickLine={false} axisLine={false} fontSize={11} />
+                    <YAxis yAxisId="left" tickLine={false} axisLine={false} fontSize={11} />
+                    <YAxis yAxisId="right" orientation="right" tickLine={false} axisLine={false} fontSize={10} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                     <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" radius={[4, 4, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} />
+                    <Bar yAxisId="right" dataKey="amount" fill="var(--color-amount)" radius={[4, 4, 0, 0]} opacity={0.75} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
                   </BarChart>
                 </ChartContainer>
               )}
@@ -271,13 +276,23 @@ export default function AnalyticsPage() {
                       axisLine={false}
                       fontSize={11}
                     />
-                    <YAxis tickLine={false} axisLine={false} fontSize={11} />
+                    <YAxis yAxisId="left" tickLine={false} axisLine={false} fontSize={11} />
+                    <YAxis yAxisId="right" orientation="right" tickLine={false} axisLine={false} fontSize={10} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Bar
+                      yAxisId="left"
                       dataKey="invoice_count"
                       fill="var(--color-invoice_count)"
                       radius={[4, 4, 0, 0]}
                     />
+                    <Bar
+                      yAxisId="right"
+                      dataKey="total_amount"
+                      fill="var(--color-total_amount)"
+                      radius={[4, 4, 0, 0]}
+                      opacity={0.75}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
                   </BarChart>
                 </ChartContainer>
               )}

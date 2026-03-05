@@ -47,7 +47,7 @@ export function EmailDraftCard({
               Email Sent Successfully
             </p>
             <p className="text-xs text-green-600 dark:text-green-400">
-              Simulated email to {to} — awaiting vendor response
+              Email sent to {to} — awaiting vendor response
             </p>
           </div>
         </CardContent>
@@ -127,11 +127,11 @@ export function EmailDraftCard({
           disabled={sendEmail.isPending}
           onClick={() => {
             sendEmail.mutate(
-              { invoiceId, actionId: action.id },
+              { invoiceId, actionId: action.id, to, subject, body },
               {
                 onSuccess: () => {
                   setSent(true)
-                  toast.success("Email sent (simulated)")
+                  toast.success("Email sent successfully")
                   onSent?.()
                 },
                 onError: (err) => toast.error(String(err)),

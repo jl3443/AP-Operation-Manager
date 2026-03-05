@@ -1,11 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { CheckCircle2, FileText } from "lucide-react"
+import { CheckCircle2, FileText, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { apiPost } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmailConfirmationDialog } from "@/components/email/email-confirmation-dialog"
+import { useEmail } from "@/hooks/use-email"
 import type { AutomationAction } from "@/lib/types"
 
 interface OverrunLine {
@@ -39,6 +42,8 @@ export function CreditRequestCard({
   onApproved?: () => void
 }) {
   const [approved, setApproved] = React.useState(false)
+  const [isLoadingPreview, setIsLoadingPreview] = React.useState(false)
+  const { preview, isLoadingConfirm, fetchCreditApprovalPreview, sendCreditApprovalEmail } = useEmail(invoiceId)
   const result = (action.result_json || {}) as CreditResult
 
   const {
@@ -153,15 +158,56 @@ export function CreditRequestCard({
         <Button
           size="sm"
           className="bg-purple-600 hover:bg-purple-700 w-full"
-          onClick={() => {
-            setApproved(true)
-            toast.success("Credit request approved")
-            onApproved?.()
+          disabled={approved || isLoadingPreview}
+          onClick={async () => {
+            setIsLoadingPreview(true)
+            try {
+              // Fetch email preview
+              await fetchCreditApprovalPreview({
+                credit_amount: total_credit_amount,
+                action_id: action.id,
+              })
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Failed to load email preview")
+            } finally {
+              setIsLoadingPreview(false)
+            }
           }}
         >
-          <CheckCircle2 className="size-3.5 mr-1.5" />
-          Approve Credit Request
+          {isLoadingPreview ? (
+            <>
+              <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+              Loading Preview...
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="size-3.5 mr-1.5" />
+              Approve Credit Request
+            </>
+          )}
         </Button>
+
+        {/* Email confirmation dialog */}
+        <EmailConfirmationDialog
+          open={!!preview}
+          preview={preview}
+          isLoading={isLoadingConfirm}
+          onConfirm={async (to, subject, body) => {
+            await sendCreditApprovalEmail(
+              to,
+              subject,
+              body,
+              action.id,
+              total_credit_amount
+            )
+            setApproved(true)
+            toast.success("Credit request approved and email sent")
+            onApproved?.()
+          }}
+          onCancel={() => {
+            // Clear preview and close dialog (preview becomes null via hook state)
+          }}
+        />
       </CardContent>
     </Card>
   )

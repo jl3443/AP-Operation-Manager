@@ -331,6 +331,8 @@ export interface DashboardKPI {
   pending_approval: number
   open_exceptions: number
   total_amount_pending: number
+  total_amount_approved: number
+  total_amount_rejected: number
   avg_processing_time_hours: number
   match_rate_pct: number
   straight_through_rate_pct: number

@@ -22,18 +22,14 @@ CACHE_TTL_SECONDS = 300  # 5 minutes
 
 SUMMARY_PROMPTS: dict[str, str] = {
     "analytics": (
-        "You are an AP operations executive analyst. Given the system data below, "
-        "write exactly 3-5 concise insight sentences for an Analytics dashboard. "
-        "Focus on: exception patterns, vendor risk trends, invoice aging concerns, "
-        "and approval bottlenecks. Be specific with numbers. "
-        "Plain text only, no markdown, no bullet points, no headers."
+        "Write 2 sentences max (under 30 words total) summarizing AP analytics. "
+        "Mention one key risk and one metric. Use numbers. "
+        "No markdown, no bullets, no headers. Be extremely brief."
     ),
     "dashboard": (
-        "You are an AP operations executive analyst. Given the system data below, "
-        "write exactly 3-5 concise insight sentences for an executive Dashboard overview. "
-        "Focus on: overall processing health, touchless rate, pending workload, "
-        "and any items needing immediate attention. Be specific with numbers. "
-        "Plain text only, no markdown, no bullet points, no headers."
+        "Write 2 sentences max (under 30 words total) as an AP dashboard summary. "
+        "Mention processing health and one urgent item. Use numbers. "
+        "No markdown, no bullets, no headers. Be extremely brief."
     ),
 }
 
@@ -57,7 +53,7 @@ def get_ai_summary(db: Session, page: str) -> str:
         page: One of 'analytics' or 'dashboard'.
 
     Returns:
-        A 3-5 sentence plain-text executive summary.
+        A 2-3 sentence plain-text executive summary.
     """
     now = time.time()
 
@@ -80,7 +76,7 @@ def get_ai_summary(db: Session, page: str) -> str:
         summary = ai_service.call_claude(
             system_prompt=prompt,
             user_message=f"Here is the current AP system data:\n\n{system_stats}",
-            max_tokens=512,
+            max_tokens=150,
         )
 
         if summary and summary.strip():

@@ -11,6 +11,9 @@ function makeQueryClient() {
         retry: 1,
         refetchOnWindowFocus: false,
       },
+      mutations: {
+        retry: 0,
+      },
     },
   })
 }

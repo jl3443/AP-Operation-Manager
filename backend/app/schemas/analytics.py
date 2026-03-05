@@ -10,6 +10,8 @@ class DashboardKPI(BaseModel):
     pending_approval: int = 0
     open_exceptions: int = 0
     total_amount_pending: float = 0.0
+    total_amount_approved: float = 0.0
+    total_amount_rejected: float = 0.0
     avg_processing_time_hours: float = 0.0
     match_rate_pct: float = 0.0
     straight_through_rate_pct: float = 0.0

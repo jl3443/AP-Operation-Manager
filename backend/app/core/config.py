@@ -41,6 +41,19 @@ class Settings(BaseSettings):
     # ── CORS ─────────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173"]
 
+    # ── Gmail / Email ───────────────────────────────────────────────────────
+    GMAIL_SENDER_EMAIL: str = ""
+    GMAIL_APP_PASSWORD: str = ""        # Gmail App Password (recommended)
+    GMAIL_CREDENTIALS_JSON: str = ""   # Legacy: service account JSON path
+    GMAIL_SERVICE_ACCOUNT_EMAIL: str = ""
+    GMAIL_PRIVATE_KEY: str = ""
+    GMAIL_PROJECT_ID: str = ""
+
+    # ── Email Recipients ────────────────────────────────────────────────────
+    DEFAULT_SUPPLIER_EMAIL: str = "supplier@example.com"
+    DEFAULT_PO_REQUEST_EMAIL: str = "procurement@example.com"
+    APPROVAL_NOTIFICATION_EMAILS: str = ""  # Comma-separated list
+
     # ── App metadata ─────────────────────────────────────────────────────
     APP_NAME: str = "AP Digital Ops Manager"
     APP_VERSION: str = "1.0.0"

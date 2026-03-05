@@ -60,6 +60,16 @@ def dashboard_kpis(
         .filter(Invoice.status.in_([InvoiceStatus.pending_approval, InvoiceStatus.matching]))
         .scalar()
     )
+    total_amount_approved = (
+        db.query(func.coalesce(func.sum(Invoice.total_amount), 0))
+        .filter(Invoice.status.in_([InvoiceStatus.approved, InvoiceStatus.posted]))
+        .scalar()
+    )
+    total_amount_rejected = (
+        db.query(func.coalesce(func.sum(Invoice.total_amount), 0))
+        .filter(Invoice.status == InvoiceStatus.rejected)
+        .scalar()
+    )
 
     # Match rate
     total_matched = db.query(func.count(MatchResult.id)).scalar() or 0
@@ -71,8 +81,10 @@ def dashboard_kpis(
     )
     match_rate = (fully_matched / total_matched * 100) if total_matched else 0.0
 
-    # Straight-through rate: invoices that went from draft -> approved without exception
-    approved = db.query(func.count(Invoice.id)).filter(Invoice.status == InvoiceStatus.approved).scalar() or 0
+    # Straight-through rate: invoices that reached approved or posted without exception
+    approved = db.query(func.count(Invoice.id)).filter(
+        Invoice.status.in_([InvoiceStatus.approved, InvoiceStatus.posted])
+    ).scalar() or 0
     stp_rate = (approved / total_invoices * 100) if total_invoices else 0.0
 
     # Overdue
@@ -92,6 +104,8 @@ def dashboard_kpis(
         pending_approval=pending_approval,
         open_exceptions=open_exceptions,
         total_amount_pending=float(total_amount_pending),
+        total_amount_approved=float(total_amount_approved),
+        total_amount_rejected=float(total_amount_rejected),
         avg_processing_time_hours=0.0,  # would require timestamps delta calculation
         match_rate_pct=round(match_rate, 1),
         straight_through_rate_pct=round(stp_rate, 1),
@@ -107,8 +121,13 @@ def invoice_funnel(
     """Return invoice processing funnel data."""
     stages = []
     for s in InvoiceStatus:
-        count = db.query(func.count(Invoice.id)).filter(Invoice.status == s).scalar() or 0
-        amount = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).filter(Invoice.status == s).scalar()
+        if s == InvoiceStatus.approved:
+            # "Approved" includes posted invoices (posted implies approved)
+            filt = Invoice.status.in_([InvoiceStatus.approved, InvoiceStatus.posted])
+        else:
+            filt = Invoice.status == s
+        count = db.query(func.count(Invoice.id)).filter(filt).scalar() or 0
+        amount = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).filter(filt).scalar()
         stages.append(FunnelStage(stage=s.value, count=count, amount=float(amount)))
     return FunnelData(stages=stages)
 

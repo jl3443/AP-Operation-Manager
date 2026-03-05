@@ -1,7 +1,7 @@
 import * as React from "react"
 import { flushSync } from "react-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { apiGet, apiPost, apiPatch, apiUpload, apiPostStream } from "@/lib/api"
+import { apiGet, apiPost, apiPatch, apiUpload, apiPostStream, apiPostDirect } from "@/lib/api"
 import type { Invoice, PaginatedResponse, AuditLog } from "@/lib/types"
 
 interface InvoiceListParams {
@@ -363,8 +363,25 @@ export function useRunPipelineStream() {
 export function useSimulateSendEmail() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ invoiceId, actionId }: { invoiceId: string; actionId?: string }) =>
-      apiPost(`/invoices/${invoiceId}/simulate-send-email`, { action_id: actionId }),
+    mutationFn: ({
+      invoiceId,
+      actionId,
+      to,
+      subject,
+      body,
+    }: {
+      invoiceId: string
+      actionId?: string
+      to?: string
+      subject?: string
+      body?: string
+    }) =>
+      apiPostDirect(`/invoices/${invoiceId}/simulate-send-email`, {
+        action_id: actionId,
+        to,
+        subject,
+        body,
+      }),
     onSuccess: (_data, { invoiceId }) => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] })
       queryClient.invalidateQueries({ queryKey: ["invoices", "detail", invoiceId] })

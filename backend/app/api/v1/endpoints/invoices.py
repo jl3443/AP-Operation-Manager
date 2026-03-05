@@ -947,9 +947,40 @@ def _pipeline_generator(
             }
         )
 
+    # ── Check if user previously resolved exceptions for this invoice ────────
+    from app.models.audit import AuditLog
+
+    user_resolution_actions = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.entity_type == "invoice",
+            AuditLog.entity_id == invoice.id,
+            AuditLog.action.in_(["email_sent_simulated", "corrections_applied", "credit_approved"]),
+        )
+        .count()
+    )
+
+    if user_resolution_actions > 0 and exc_count > 0:
+        new_open = (
+            db.query(Exception_)
+            .filter(
+                Exception_.invoice_id == invoice.id,
+                Exception_.status == ExceptionStatus.open,
+            )
+            .all()
+        )
+        for exc_obj in new_open:
+            exc_obj.status = ExceptionStatus.resolved
+            exc_obj.resolution_type = ResolutionType.manual_override
+            exc_obj.resolution_notes = "Auto-resolved: user completed resolution actions in previous run"
+            exc_obj.resolved_at = datetime.now(UTC)
+        db.commit()
+        exc_count = 0
+
     # ── Clean match → auto-approve + auto-post (skip Steps 5 & 6) ────────────
     match_status_val = match_result.match_status.value if match_result else None
-    if exc_count == 0 and match_status_val in ("matched", "tolerance_passed"):
+    user_resolved = user_resolution_actions > 0
+    if exc_count == 0 and (match_status_val in ("matched", "tolerance_passed") or user_resolved):
         # Auto-approve & auto-post the invoice
         invoice.status = InvoiceStatus.posted
         invoice.posted_at = datetime.now(UTC)
@@ -962,9 +993,19 @@ def _pipeline_generator(
             action="auto_approved_posted",
             actor_type=ActorType.ai_agent,
             actor_name="AP Pipeline Agent",
-            evidence={"match_status": match_status_val, "overall_score": match_result.overall_score},
+            evidence={
+                "match_status": match_status_val,
+                "overall_score": match_result.overall_score if match_result else None,
+                "user_resolved": user_resolved,
+            },
         )
         db.commit()
+
+        auto_reason = (
+            f"All exceptions resolved by user actions ({user_resolution_actions} actions on record). Auto-approved and posted."
+            if user_resolved
+            else f"Clean {match_status_val} with score {match_result.overall_score}%. No exceptions. Auto-approved and posted."
+        )
 
         # Emit recommendation step as auto-approved
         yield _ndjson_line(
@@ -980,7 +1021,7 @@ def _pipeline_generator(
                 "duration_ms": 0,
                 "output": {
                     "recommendation": "approve",
-                    "reasoning": f"Clean {match_status_val} with score {match_result.overall_score}%. No exceptions. Auto-approved and posted.",
+                    "reasoning": auto_reason,
                     "risk_factors": [],
                     "auto_approved": True,
                     "auto_posted": True,
@@ -1211,13 +1252,27 @@ def simulate_send_email(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Simulate sending a vendor email. Sets invoice status to pending_approval (awaiting vendor)."""
+    """Send a vendor email and update invoice status to pending_approval."""
+    from app.services.email_service import EmailService
+
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     invoice.status = InvoiceStatus.pending_approval
     db.commit()
+
+    # Attempt real email send if recipient is provided
+    to_email = body.get("to") or ""
+    subject = body.get("subject") or f"Invoice {invoice.invoice_number} — Action Required"
+    email_body = body.get("body") or ""
+    email_result = {"sent": False}
+    if to_email:
+        email_result = EmailService.send_email(
+            to=to_email,
+            subject=subject,
+            body=email_body,
+        )
 
     audit_service.log_action(
         db,
@@ -1227,15 +1282,20 @@ def simulate_send_email(
         actor_type=ActorType.user,
         actor_id=current_user.id,
         actor_name=current_user.name,
-        evidence={"action_id": body.get("action_id"), "simulated": True},
+        evidence={
+            "action_id": body.get("action_id"),
+            "to": to_email,
+            "subject": subject,
+            "email_sent": email_result.get("success", False),
+        },
     )
     db.commit()
 
     return {
-        "message": "Email sent (simulated)",
+        "message": "Email sent successfully" if email_result.get("success") else "Email queued",
         "invoice_status": "pending_approval",
         "invoice_id": str(invoice_id),
-        "simulated": True,
+        "email_result": email_result,
     }
 
 
@@ -1275,6 +1335,7 @@ def apply_corrections_endpoint(
         new_subtotal + float(invoice.tax_amount) + float(invoice.freight_amount) - float(invoice.discount_amount), 2
     )
     invoice.total_amount = new_total
+    invoice.status = InvoiceStatus.pending_approval
     db.commit()
 
     audit_service.log_action(
@@ -1294,6 +1355,148 @@ def apply_corrections_endpoint(
         "old_total": old_total,
         "new_total": new_total,
         "difference": round(new_total - old_total, 2),
+    }
+
+
+@router.post("/{invoice_id}/approve-credit-preview")
+def preview_credit_approval_email(
+    invoice_id: uuid.UUID,
+    body: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a preview of the credit approval email before sending."""
+    from app.services.email_service import EmailService
+    from app.services.email_template import EmailTemplate
+
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # Get supplier info
+    supplier_name = "Supplier"
+    supplier_email = body.get("to_email") or EmailService.get_default_supplier_email()
+
+    if invoice.vendor:
+        supplier_name = invoice.vendor.name
+
+    # Render email template
+    email_content = EmailTemplate.get_credit_approval_email(
+        supplier_name=supplier_name,
+        invoice_id=invoice.invoice_number,
+        amount=float(invoice.total_amount),
+        credit_amount=float(body.get("credit_amount", invoice.total_amount)),
+        currency=invoice.currency,
+        invoice_date=invoice.invoice_date.isoformat() if invoice.invoice_date else "",
+    )
+
+    return {
+        "preview": True,
+        "to": supplier_email,
+        "subject": email_content["subject"],
+        "body": email_content["body"],
+        "invoice_id": str(invoice_id),
+        "credit_amount": body.get("credit_amount"),
+        "action_id": body.get("action_id"),
+    }
+
+
+@router.post("/{invoice_id}/approve-credit-confirm")
+def send_credit_approval_email(
+    invoice_id: uuid.UUID,
+    body: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send the credit approval email and log the approval action."""
+    from app.services.email_service import EmailService
+
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # Update invoice status to pending_approval
+    invoice.status = InvoiceStatus.pending_approval
+
+    to_email = body.get("to") or EmailService.get_default_supplier_email()
+    subject = body.get("subject", "Credit Request Approved")
+    email_body = body.get("body", "")
+
+    # Send email via Gmail
+    email_result = EmailService.send_email(
+        to=to_email,
+        subject=subject,
+        body=email_body,
+        html=False,
+    )
+
+    if not email_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send email: {email_result.get('error')}",
+        )
+
+    # Log the approval action
+    audit_service.log_action(
+        db,
+        entity_type="invoice",
+        entity_id=invoice.id,
+        action="credit_approved",
+        actor_type=ActorType.user,
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        evidence={
+            "action_id": body.get("action_id"),
+            "credit_amount": body.get("credit_amount"),
+            "email_sent": True,
+            "email_to": to_email,
+            "message_id": email_result.get("message_id"),
+        },
+    )
+    db.commit()
+
+    return {
+        "message": "Credit request approved and email sent",
+        "invoice_id": str(invoice_id),
+        "email_sent": True,
+        "message_id": email_result.get("message_id"),
+    }
+
+
+@router.post("/{invoice_id}/approve-credit")
+def approve_credit_request(
+    invoice_id: uuid.UUID,
+    body: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Log that the user approved a credit request for this invoice."""
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # Update invoice status to pending_approval
+    invoice.status = InvoiceStatus.pending_approval
+
+    audit_service.log_action(
+        db,
+        entity_type="invoice",
+        entity_id=invoice.id,
+        action="credit_approved",
+        actor_type=ActorType.user,
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        evidence={
+            "action_id": body.get("action_id"),
+            "credit_amount": body.get("credit_amount"),
+        },
+    )
+    db.commit()
+
+    return {
+        "message": "Credit request approved",
+        "invoice_id": str(invoice_id),
+        "invoice_status": "approved",
     }
 
 

@@ -9,6 +9,11 @@ import {
   Zap,
   Timer,
   Printer,
+  Sparkles,
+  BrainCircuit,
+  CheckCircle2,
+  XCircle,
+  DollarSign,
 } from "lucide-react"
 import Link from "next/link"
 import {
@@ -24,8 +29,8 @@ import {
 import { useDashboardKPIs, useFunnelData, useTopVendors, useTrends } from "@/hooks/use-dashboard"
 import { useTouchlessRate } from "@/hooks/use-compliance"
 import { useInvoices } from "@/hooks/use-invoices"
+import { useAiSummary } from "@/hooks/use-analytics"
 import { KpiCard } from "@/components/kpi-card"
-import { AiSummaryCard } from "@/components/ai-summary-card"
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge"
 import { KpiCardSkeleton, ChartSkeleton, TableSkeleton } from "@/components/loading-skeleton"
 import { QueryError } from "@/components/query-error"
@@ -59,6 +64,7 @@ const funnelColors: Record<string, string> = {
 
 const funnelConfig = {
   count: { label: "Invoices" },
+  amount: { label: "Amount ($)" },
   draft: { label: "Draft", color: funnelColors.draft },
   extracted: { label: "Extracted", color: funnelColors.extracted },
   matching: { label: "Matching", color: funnelColors.matching },
@@ -93,20 +99,24 @@ export default function DashboardPage() {
     sort_by: "created_at",
     sort_order: "desc",
   })
+  const { data: aiSummary, isLoading: aiLoading } = useAiSummary("dashboard")
   const funnelChartData = funnel?.stages.map((s) => ({
     stage: s.stage.charAt(0).toUpperCase() + s.stage.slice(1).replaceAll("_", " "),
     count: s.count,
+    amount: s.amount,
     fill: funnelColors[s.stage] ?? "oklch(0.60 0.10 250)",
   })) ?? []
 
   const vendorChartData = topVendors?.map((v, i) => ({
     name: v.vendor_name,
     invoices: v.invoice_count,
+    amount: v.total_amount,
     fill: vendorColors[i % vendorColors.length],
   })) ?? []
 
   const vendorConfigDynamic: ChartConfig = {
     invoices: { label: "Invoices" },
+    amount: { label: "Amount ($)" },
     ...Object.fromEntries(
       (topVendors ?? []).map((v, i) => [
         v.vendor_name.toLowerCase().replace(/\s+/g, ""),
@@ -137,8 +147,32 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      {/* AI Summary */}
-      <AiSummaryCard page="dashboard" />
+      {/* AI Insights Hero */}
+      <Card className="overflow-hidden border-0 shadow-sm bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white">
+        <CardContent className="py-4 px-5">
+          <div className="flex items-start gap-4">
+            <div className="rounded-xl bg-white/10 backdrop-blur-sm p-2.5 shrink-0 ring-1 ring-white/20">
+              <BrainCircuit className="size-5 text-blue-300" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <h3 className="text-sm font-semibold tracking-tight text-white/90">AI Insights</h3>
+                <Sparkles className="size-3.5 text-amber-300" />
+              </div>
+              {aiLoading ? (
+                <div className="space-y-1.5">
+                  <div className="h-3.5 w-full rounded bg-white/10 animate-pulse" />
+                  <div className="h-3.5 w-3/4 rounded bg-white/10 animate-pulse" />
+                </div>
+              ) : (
+                <p className="text-sm leading-relaxed text-blue-100/80">
+                  {aiSummary?.summary ?? "AI insights will appear once data is available."}
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* KPI Cards */}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -186,6 +220,35 @@ export default function DashboardPage() {
               title="Avg Cycle Time"
               value={`${touchless?.cycle_time_avg_hours.toFixed(1) ?? "0"}h`}
               icon={Timer}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Amount KPI Cards */}
+      <div className="grid gap-2 sm:grid-cols-3">
+        {kpisLoading ? (
+          <>
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
+            <KpiCardSkeleton />
+          </>
+        ) : (
+          <>
+            <KpiCard
+              title="Pending Amount"
+              value={`$${(kpis?.total_amount_pending ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              icon={DollarSign}
+            />
+            <KpiCard
+              title="Approved Amount"
+              value={`$${(kpis?.total_amount_approved ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              icon={CheckCircle2}
+            />
+            <KpiCard
+              title="Rejected Amount"
+              value={`$${(kpis?.total_amount_rejected ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              icon={XCircle}
             />
           </>
         )}
